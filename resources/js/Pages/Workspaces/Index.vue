@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { confirmDelete, confirmAction, showWarning } from '@/Utils/alert';
 
 const props = defineProps({
     workspaces: {
@@ -55,8 +56,13 @@ const submitEditWorkspace = () => {
 };
 
 // Delete Workspace
-const deleteWorkspace = (ws) => {
-    if (confirm(`PERINGATAN: Yakin ingin menghapus workspace "${ws.name}"?\n\nSemua Space, Project, dan Task di dalamnya akan ikut terhapus permanen.`)) {
+const deleteWorkspace = async (ws) => {
+    const confirmed = await confirmDelete({
+        title: 'Hapus Workspace?',
+        text: `Yakin ingin menghapus workspace "${ws.name}"? Semua space, task, dan dokumen di dalamnya akan ikut terhapus permanen.`,
+        confirmButtonText: 'Ya, Hapus Workspace!',
+    });
+    if (confirmed) {
         router.delete(`/workspaces/${ws.id}`);
     }
 };
@@ -106,30 +112,43 @@ const submitAddMember = () => {
     });
 };
 
-const updateMemberRole = (member, newRole) => {
+const updateMemberRole = async (member, newRole) => {
     if (member.is_owner) {
-        alert('Peran Pemilik (Owner) workspace tidak dapat diubah.');
+        showWarning('Perhatian', 'Peran Pemilik (Owner) workspace tidak dapat diubah.');
         return;
     }
-    router.put(`/workspaces/${selectedWorkspace.value.id}/members/${member.id}`, {
-        role: newRole,
-    }, {
-        preserveScroll: true,
-        onSuccess: () => {
-            const updated = props.workspaces.find((w) => w.id === selectedWorkspace.value.id);
-            if (updated) {
-                selectedWorkspace.value = updated;
-            }
-        },
+    const roleLabel = newRole === 'admin' ? 'Administrator Workspace' : 'Anggota (Member)';
+    const confirmed = await confirmAction({
+        title: 'Ubah Peran Anggota?',
+        text: `Ubah peran ${member.name} menjadi ${roleLabel}?`,
+        confirmButtonText: 'Ya, Ubah Peran',
     });
+    if (confirmed) {
+        router.put(`/workspaces/${selectedWorkspace.value.id}/members/${member.id}`, {
+            role: newRole,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                const updated = props.workspaces.find((w) => w.id === selectedWorkspace.value.id);
+                if (updated) {
+                    selectedWorkspace.value = updated;
+                }
+            },
+        });
+    }
 };
 
-const removeMember = (member) => {
+const removeMember = async (member) => {
     if (member.is_owner) {
-        alert('Pemilik (Owner) workspace tidak dapat dikeluarkan.');
+        showWarning('Perhatian', 'Pemilik (Owner) workspace tidak dapat dikeluarkan.');
         return;
     }
-    if (confirm(`Yakin ingin mengeluarkan ${member.name} dari workspace "${selectedWorkspace.value.name}"?`)) {
+    const confirmed = await confirmDelete({
+        title: 'Keluarkan Anggota?',
+        text: `Yakin ingin mengeluarkan ${member.name} dari workspace "${selectedWorkspace.value.name}"?`,
+        confirmButtonText: 'Ya, Keluarkan!',
+    });
+    if (confirmed) {
         router.delete(`/workspaces/${selectedWorkspace.value.id}/members/${member.id}`, {
             preserveScroll: true,
             onSuccess: () => {

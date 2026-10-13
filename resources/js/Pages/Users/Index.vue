@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { confirmDelete, confirmAction, showWarning } from '@/Utils/alert';
 
 const props = defineProps({
     users: {
@@ -111,13 +112,19 @@ const submitEditUser = () => {
 };
 
 // Change Role In-Place (Only for non-super_admin)
-const changeRole = (user, newRole) => {
+const changeRole = async (user, newRole) => {
     if (user.role === 'super_admin') {
-        alert('Role Super Admin bersifat permanen dan tidak dapat diubah.');
+        showWarning('Perhatian', 'Role Super Admin bersifat permanen dan tidak dapat diubah.');
         return;
     }
     if (user.role === newRole) return;
-    if (confirm(`Yakin ingin mengubah role ${user.name} menjadi ${newRole}?`)) {
+    const roleLabel = newRole === 'admin' ? 'Administrator' : 'Anggota (Member)';
+    const confirmed = await confirmAction({
+        title: 'Ubah Peran Pengguna?',
+        text: `Yakin ingin mengubah peran ${user.name} menjadi ${roleLabel}?`,
+        confirmButtonText: 'Ya, Ubah Peran!',
+    });
+    if (confirmed) {
         router.put(`/users/${user.id}/role`, {
             role: newRole,
         }, {
@@ -127,12 +134,17 @@ const changeRole = (user, newRole) => {
 };
 
 // Delete User
-const deleteUser = (user) => {
+const deleteUser = async (user) => {
     if (user.role === 'super_admin') {
-        alert('Akun dengan role Super Admin bersifat permanen dan tidak dapat dihapus.');
+        showWarning('Perhatian', 'Akun dengan role Super Admin bersifat permanen dan tidak dapat dihapus.');
         return;
     }
-    if (confirm(`Yakin ingin menghapus pengguna ${user.name}? Tindakan ini tidak dapat dibatalkan.`)) {
+    const confirmed = await confirmDelete({
+        title: 'Hapus Pengguna?',
+        text: `Yakin ingin menghapus pengguna "${user.name}"? Seluruh data terkait akun ini akan dihapus permanen.`,
+        confirmButtonText: 'Ya, Hapus Pengguna!',
+    });
+    if (confirmed) {
         router.delete(`/users/${user.id}`, {
             preserveScroll: true,
         });

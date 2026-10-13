@@ -3,6 +3,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Sortable from 'sortablejs';
+import { confirmDelete } from '@/Utils/alert';
 
 const props = defineProps({
     space: {
@@ -73,8 +74,13 @@ const submitQuickTask = (stageId) => {
 };
 
 // Delete Task
-const deleteTask = (task) => {
-    if (confirm(`Hapus task "${task.title}"?`)) {
+const deleteTask = async (task) => {
+    const confirmed = await confirmDelete({
+        title: 'Hapus Task?',
+        text: `Yakin ingin menghapus task "${task.title}"?`,
+        confirmButtonText: 'Ya, Hapus Task!',
+    });
+    if (confirmed) {
         if (selectedTask.value && selectedTask.value.id === task.id) {
             closeTaskModal();
         }
@@ -368,7 +374,12 @@ const downloadAttachment = (att) => {
 };
 
 const deleteAttachment = async (att) => {
-    if (!confirm(`Hapus lampiran "${att.original_name}"?`)) return;
+    const confirmed = await confirmDelete({
+        title: 'Hapus Lampiran?',
+        text: `Yakin ingin menghapus lampiran "${att.original_name}"?`,
+        confirmButtonText: 'Ya, Hapus Berkas!',
+    });
+    if (!confirmed) return;
 
     try {
         const res = await fetch(`/tasks/${selectedTask.value.id}/attachments/${att.id}`, {
@@ -423,7 +434,12 @@ const addComment = async () => {
 };
 
 const deleteComment = async (com) => {
-    if (!confirm('Hapus komentar ini?')) return;
+    const confirmed = await confirmDelete({
+        title: 'Hapus Komentar?',
+        text: 'Yakin ingin menghapus komentar ini?',
+        confirmButtonText: 'Ya, Hapus Komentar!',
+    });
+    if (!confirmed) return;
 
     try {
         const res = await fetch(`/tasks/${selectedTask.value.id}/comments/${com.id}`, {
