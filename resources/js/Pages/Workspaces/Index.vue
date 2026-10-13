@@ -56,11 +56,7 @@ const submitEditWorkspace = () => {
 
 // Delete Workspace
 const deleteWorkspace = (ws) => {
-    if (props.workspaces.length <= 1) {
-        alert('Tidak dapat menghapus satu-satunya ruang kerja di sistem.');
-        return;
-    }
-    if (confirm(`Yakin ingin menghapus workspace "${ws.name}"? Semua space dan task di dalamnya akan ikut terhapus.`)) {
+    if (confirm(`PERINGATAN: Yakin ingin menghapus workspace "${ws.name}"?\n\nSemua Space, Project, dan Task di dalamnya akan ikut terhapus permanen.`)) {
         router.delete(`/workspaces/${ws.id}`);
     }
 };
@@ -197,8 +193,24 @@ const getRoleLabel = (role) => {
             </div>
         </div>
 
+        <!-- Empty State if no workspaces -->
+        <div v-if="workspaces.length === 0" class="card border border-secondary-subtle rounded-3 p-5 text-center shadow-sm">
+            <div class="py-4">
+                <div class="bg-primary-subtle text-primary rounded-circle d-inline-flex align-items-center justify-content-center p-3 mb-3" style="width: 64px; height: 64px;">
+                    <i class="ri-community-line fs-32"></i>
+                </div>
+                <h5 class="fw-bold mb-2">Belum Ada Ruang Kerja (Workspace)</h5>
+                <p class="text-muted fs-13 mb-4 mx-auto" style="max-width: 480px;">
+                    Anda belum memiliki atau belum tergabung ke ruang kerja manapun. Buat workspace baru untuk mulai mengorganisir proyek, papan Kanban, dan tim Anda.
+                </p>
+                <button type="button" @click="showCreateModal = true" class="btn btn-primary rounded-pill px-4 fw-semibold shadow-sm">
+                    <i class="ri-add-line me-1"></i> Buat Workspace Pertama Anda
+                </button>
+            </div>
+        </div>
+
         <!-- Workspaces Cards Grid -->
-        <div class="row g-3">
+        <div v-else class="row g-3">
             <div v-for="ws in workspaces" :key="ws.id" class="col-md-6 col-xl-4">
                 <div
                     class="card h-100 border rounded-3 shadow-sm transition-all"
@@ -264,10 +276,10 @@ const getRoleLabel = (role) => {
                                                 <span>Kelola Anggota</span>
                                             </button>
                                         </li>
-                                        <li v-if="workspaces.length > 1 && ws.is_owner">
+                                        <li v-if="ws.is_owner || ws.can_manage">
                                             <hr class="dropdown-divider my-1">
                                         </li>
-                                        <li v-if="workspaces.length > 1 && ws.is_owner">
+                                        <li v-if="ws.is_owner || ws.can_manage">
                                             <button
                                                 type="button"
                                                 class="dropdown-item rounded py-1 px-2 d-flex align-items-center gap-2 text-danger"

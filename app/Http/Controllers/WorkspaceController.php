@@ -135,10 +135,6 @@ class WorkspaceController extends Controller
             abort(403, 'Hanya Pemilik Workspace atau Super Admin yang dapat menghapus ruang kerja.');
         }
 
-        if (Workspace::count() <= 1) {
-            return back()->with('error', 'Tidak dapat menghapus satu-satunya ruang kerja di sistem.');
-        }
-
         $name = $workspace->name;
         if ($request->session()->get('active_workspace_id') === $workspace->id) {
             $fallback = Workspace::where('id', '!=', $workspace->id)->first();
