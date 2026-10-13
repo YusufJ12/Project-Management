@@ -141,5 +141,28 @@ class TaskAttachmentController extends Controller
 
         return back()->with('success', 'Berkas lampiran berhasil dihapus.');
     }
+
+    public function preview(Request $request, Task $task, TaskAttachment $attachment)
+    {
+        $user = Auth::user();
+        $task->load('list.space');
+        $space = $task->list->space;
+
+        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+            abort(403, 'Akses ditolak.');
+        }
+
+        if ($attachment->task_id !== $task->id || ! Storage::disk('public')->exists($attachment->storage_path)) {
+            abort(404, 'Berkas fisik tidak ditemukan.');
+        }
+
+        $filePath = Storage::disk('public')->path($attachment->storage_path);
+        $mime = $attachment->detected_mime ?: Storage::disk('public')->mimeType($attachment->storage_path);
+
+        return response()->file($filePath, [
+            'Content-Type' => $mime,
+            'Content-Disposition' => 'inline; filename="' . $attachment->original_name . '"',
+        ]);
+    }
 }
 

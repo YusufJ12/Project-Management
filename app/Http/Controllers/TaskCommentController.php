@@ -12,6 +12,26 @@ use Illuminate\Support\Facades\Auth;
 
 class TaskCommentController extends Controller
 {
+    public function index(Request $request, Task $task): JsonResponse
+    {
+        $user = Auth::user();
+        $task->load('list.space');
+        $space = $task->list->space;
+
+        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+            return response()->json(['error' => 'Akses ditolak.'], 403);
+        }
+
+        $comments = $task->comments()
+            ->with('user:id,name,email')
+            ->latest('id')
+            ->get();
+
+        return response()->json([
+            'comments' => $comments,
+        ]);
+    }
+
     public function store(Request $request, Task $task): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([

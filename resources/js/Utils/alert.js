@@ -129,5 +129,24 @@ export const showError = (title = 'Terjadi Kesalahan', text = '') => {
     });
 };
 
+/**
+ * Toast Notifikasi Pojok Kanan Atas (Untuk simpan perubahan, auto-save, dll).
+ */
+export const showToast = (title = 'Perubahan berhasil disimpan', icon = 'success') => {
+    return Swal.fire({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        icon,
+        title,
+        customClass: {
+            popup: 'rounded-3 shadow border-0 py-2 px-3',
+            title: 'fs-13 fw-semibold m-0',
+        },
+    });
+};
+
 export default CustomSwal;
 

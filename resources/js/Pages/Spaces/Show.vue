@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Sortable from 'sortablejs';
-import { confirmDelete } from '@/Utils/alert';
+import { confirmDelete, showToast } from '@/Utils/alert';
 
 const props = defineProps({
     space: {
@@ -15,10 +15,23 @@ const props = defineProps({
 const page = usePage();
 const activeTab = ref('kanban'); // 'kanban', 'overview', 'settings'
 
+// Reactive copy of Space for smooth background real-time updates
+const localSpace = ref(JSON.parse(JSON.stringify(props.space)));
+
+watch(
+    () => props.space,
+    (newVal) => {
+        if (newVal) {
+            localSpace.value = JSON.parse(JSON.stringify(newVal));
+        }
+    },
+    { deep: true }
+);
+
 // Active List (default to first list)
 const selectedListId = ref(props.space.lists?.[0]?.id || null);
 const currentList = computed(() => {
-    return props.space.lists?.find((l) => l.id === selectedListId.value) || props.space.lists?.[0] || null;
+    return localSpace.value.lists?.find((l) => l.id === selectedListId.value) || localSpace.value.lists?.[0] || null;
 });
 
 // Settings Form
@@ -30,7 +43,14 @@ const editForm = useForm({
 });
 
 const updateSpace = () => {
-    editForm.put(`/spaces/${props.space.id}`);
+    editForm.put(`/spaces/${props.space.id}`, {
+        onSuccess: () => {
+            showToast('Pengaturan Space berhasil diperbarui!', 'success');
+        },
+        onError: () => {
+            showToast('Gagal memperbarui pengaturan Space.', 'error');
+        },
+    });
 };
 
 const deleteCurrentSpace = async () => {
@@ -213,7 +233,7 @@ const closeTaskModal = () => {
 };
 
 // Save Task Attributes
-const saveTaskDetails = async () => {
+const saveTaskDetails = async (showAlert = false) => {
     if (!selectedTask.value || isSavingTask.value) return;
 
     isSavingTask.value = true;
@@ -240,15 +260,109 @@ const saveTaskDetails = async () => {
             const data = await res.json();
             if (data.task) {
                 selectedTask.value = data.task;
+                // Optimistically update local task in localSpace
+                if (localSpace.value?.lists) {
+                    for (const l of localSpace.value.lists) {
+                        for (const s of l.stages || []) {
+                            const idx = (s.tasks || []).findIndex((t) => t.id === data.task.id);
+                            if (idx > -1) {
+                                if (s.id !== data.task.stage_id) {
+                                    s.tasks.splice(idx, 1);
+                                    const targetStage = l.stages.find((stg) => stg.id === data.task.stage_id);
+                                    if (targetStage) {
+                                        if (!targetStage.tasks) targetStage.tasks = [];
+                                        targetStage.tasks.push(data.task);
+                                    }
+                                } else {
+                                    s.tasks[idx] = data.task;
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            // Reload space data to synchronize Kanban cards
-            router.reload({ only: ['space'] });
+            if (showAlert) {
+                showToast('Perubahan task berhasil disimpan!', 'success');
+            }
+        } else {
+            if (showAlert) {
+                showToast('Gagal menyimpan perubahan task.', 'error');
+            }
         }
     } catch (err) {
         console.error('Error saving task', err);
+        if (showAlert) {
+            showToast('Terjadi kesalahan saat menyimpan perubahan.', 'error');
+        }
     } finally {
         isSavingTask.value = false;
     }
+};
+
+// ==========================================
+// SELECT2-STYLE SEARCHABLE ASSIGNEES
+// ==========================================
+const assigneeSearchQuery = ref('');
+const isAssigneeDropdownOpen = ref(false);
+
+const filteredMembers = computed(() => {
+    const list = localSpace.value?.members || props.space.members || [];
+    if (!assigneeSearchQuery.value.trim()) return list;
+    const q = assigneeSearchQuery.value.toLowerCase();
+    return list.filter((m) =>
+        m.name.toLowerCase().includes(q) ||
+        (m.email && m.email.toLowerCase().includes(q))
+    );
+});
+
+const selectedAssigneeObjects = computed(() => {
+    const members = localSpace.value?.members || props.space.members || [];
+    return members.filter((m) => taskAssigneeIds.value.includes(m.id));
+});
+
+const toggleAssignee = (memberId) => {
+    const idx = taskAssigneeIds.value.indexOf(memberId);
+    if (idx > -1) {
+        taskAssigneeIds.value.splice(idx, 1);
+    } else {
+        taskAssigneeIds.value.push(memberId);
+    }
+    saveTaskDetails(false);
+};
+
+const removeAssignee = (memberId) => {
+    taskAssigneeIds.value = taskAssigneeIds.value.filter((id) => id !== memberId);
+    saveTaskDetails(false);
+};
+
+// ==========================================
+// FILE PREVIEW MODAL (PDF & IMAGES)
+// ==========================================
+const previewingFile = ref(null);
+const isPreviewModalOpen = ref(false);
+
+const isImageFile = (att) => {
+    if (!att) return false;
+    const mime = (att.detected_mime || '').toLowerCase();
+    const name = (att.original_name || '').toLowerCase();
+    return mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+};
+
+const isPdfFile = (att) => {
+    if (!att) return false;
+    const mime = (att.detected_mime || '').toLowerCase();
+    const name = (att.original_name || '').toLowerCase();
+    return mime.includes('pdf') || /\.pdf$/i.test(name);
+};
+
+const openFilePreview = (att) => {
+    previewingFile.value = att;
+    isPreviewModalOpen.value = true;
+};
+
+const closeFilePreview = () => {
+    isPreviewModalOpen.value = false;
+    previewingFile.value = null;
 };
 
 // Checklist Handlers
@@ -276,10 +390,11 @@ const addChecklist = async () => {
             }
             selectedTask.value.checklists.push(data.checklist);
             newChecklistTitle.value = '';
-            router.reload({ only: ['space'] });
+            showToast('Item checklist berhasil ditambahkan!', 'success');
         }
     } catch (err) {
         console.error('Error adding checklist', err);
+        showToast('Gagal menambahkan item checklist', 'error');
     } finally {
         isSubmittingChecklist.value = false;
     }
@@ -303,7 +418,6 @@ const toggleChecklist = async (chk) => {
             chk.is_completed = data.checklist.is_completed;
             chk.completed_by = data.checklist.completed_by;
             chk.completed_at = data.checklist.completed_at;
-            router.reload({ only: ['space'] });
         }
     } catch (err) {
         console.error('Error toggling checklist', err);
@@ -324,7 +438,7 @@ const deleteChecklist = async (chk) => {
 
         if (res.ok) {
             selectedTask.value.checklists = selectedTask.value.checklists.filter((c) => c.id !== chk.id);
-            router.reload({ only: ['space'] });
+            showToast('Item checklist berhasil dihapus', 'success');
         }
     } catch (err) {
         console.error('Error deleting checklist', err);
@@ -370,10 +484,11 @@ const handleFileUpload = async (event) => {
             }
             selectedTask.value.attachments.unshift(data.attachment);
             if (fileInputRef.value) fileInputRef.value.value = '';
-            router.reload({ only: ['space'] });
+            showToast('Berkas lampiran berhasil diunggah!', 'success');
         }
     } catch (err) {
         console.error('Error uploading attachment', err);
+        showToast('Gagal mengunggah berkas lampiran', 'error');
     } finally {
         isUploadingAttachment.value = false;
     }
@@ -403,7 +518,7 @@ const deleteAttachment = async (att) => {
 
         if (res.ok) {
             selectedTask.value.attachments = selectedTask.value.attachments.filter((a) => a.id !== att.id);
-            router.reload({ only: ['space'] });
+            showToast('Berkas lampiran berhasil dihapus', 'success');
         }
     } catch (err) {
         console.error('Error deleting attachment', err);
@@ -435,10 +550,11 @@ const addComment = async () => {
             }
             selectedTask.value.comments.unshift(data.comment);
             newCommentContent.value = '';
-            router.reload({ only: ['space'] });
+            showToast('Komentar berhasil dikirim!', 'success');
         }
     } catch (err) {
         console.error('Error adding comment', err);
+        showToast('Gagal mengirim komentar', 'error');
     } finally {
         isSubmittingComment.value = false;
     }
@@ -463,11 +579,86 @@ const deleteComment = async (com) => {
 
         if (res.ok) {
             selectedTask.value.comments = selectedTask.value.comments.filter((c) => c.id !== com.id);
-            router.reload({ only: ['space'] });
+            showToast('Komentar berhasil dihapus', 'success');
         }
     } catch (err) {
         console.error('Error deleting comment', err);
     }
+};
+
+// ==========================================
+// REAL-TIME KANBAN & CHAT SYNC
+// ==========================================
+const isDraggingCard = ref(false);
+let kanbanPollingInterval = null;
+let commentsPollingInterval = null;
+
+const syncSpaceData = async () => {
+    // Avoid syncing while user is dragging a card or actively typing a new quick task
+    if (isDraggingCard.value || isSubmittingTask.value || activeQuickAddStageId.value) return;
+
+    try {
+        const res = await fetch(`/spaces/${props.space.slug}/sync`, {
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.space?.lists) {
+                const newJson = JSON.stringify(data.space.lists);
+                const oldJson = JSON.stringify(localSpace.value.lists);
+                if (newJson !== oldJson) {
+                    localSpace.value.lists = data.space.lists;
+
+                    // If task modal is open, sync comments, checklists, and attachments
+                    if (selectedTask.value) {
+                        for (const list of data.space.lists) {
+                            for (const stage of list.stages || []) {
+                                const found = (stage.tasks || []).find((t) => t.id === selectedTask.value.id);
+                                if (found) {
+                                    if (JSON.stringify(found.comments) !== JSON.stringify(selectedTask.value.comments)) {
+                                        selectedTask.value.comments = found.comments || [];
+                                    }
+                                    if (JSON.stringify(found.checklists) !== JSON.stringify(selectedTask.value.checklists)) {
+                                        selectedTask.value.checklists = found.checklists || [];
+                                    }
+                                    if (JSON.stringify(found.attachments) !== JSON.stringify(selectedTask.value.attachments)) {
+                                        selectedTask.value.attachments = found.attachments || [];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        // silent catch on network glitches
+    }
+};
+
+const pollComments = async () => {
+    if (!isTaskModalOpen.value || !selectedTask.value || isSubmittingComment.value) return;
+    try {
+        const res = await fetch(`/tasks/${selectedTask.value.id}/comments`, {
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.comments) {
+                const newComJson = JSON.stringify(data.comments);
+                const oldComJson = JSON.stringify(selectedTask.value.comments || []);
+                if (newComJson !== oldComJson) {
+                    selectedTask.value.comments = data.comments;
+                }
+            }
+        }
+    } catch (e) {}
 };
 
 // ==========================================
@@ -489,7 +680,11 @@ const initSortable = () => {
             chosenClass: 'kanban-chosen-card',
             dragClass: 'kanban-drag-card',
             fallbackTolerance: 3,
+            onStart: () => {
+                isDraggingCard.value = true;
+            },
             onEnd: async (evt) => {
+                isDraggingCard.value = false;
                 const taskId = evt.item.dataset.taskId;
                 const newStageId = evt.to.dataset.stageId;
                 const newPosition = evt.newIndex + 1;
@@ -529,14 +724,23 @@ onMounted(() => {
     nextTick(() => {
         initSortable();
     });
+    kanbanPollingInterval = setInterval(syncSpaceData, 4000);
+    commentsPollingInterval = setInterval(pollComments, 3000);
+});
+
+onUnmounted(() => {
+    if (kanbanPollingInterval) clearInterval(kanbanPollingInterval);
+    if (commentsPollingInterval) clearInterval(commentsPollingInterval);
 });
 
 watch(
-    () => props.space,
+    () => localSpace.value,
     () => {
-        nextTick(() => {
-            initSortable();
-        });
+        if (!isDraggingCard.value) {
+            nextTick(() => {
+                initSortable();
+            });
+        }
     },
     { deep: true }
 );
@@ -598,6 +802,10 @@ const filteredTasks = computed(() => {
                                 :class="space.status === 'active' ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-secondary-subtle text-secondary'"
                             >
                                 {{ space.status === 'active' ? 'Aktif' : 'Selesai' }}
+                            </span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 fs-11 d-inline-flex align-items-center gap-1" title="Kanban & Diskusi tersinkronisasi otomatis secara realtime">
+                                <span class="spinner-grow spinner-grow-sm text-success" style="width: 6px; height: 6px;" role="status"></span>
+                                Live Sync
                             </span>
                         </h4>
                         <p class="text-muted fs-13 mb-0" style="max-width: 650px;">
@@ -727,7 +935,11 @@ const filteredTasks = computed(() => {
                             autofocus
                         ></textarea>
                         <div class="d-flex justify-content-between align-items-center">
-                            <select v-model="quickTaskPriority" class="form-select form-select-sm border-0 py-0 px-1 fs-11 w-auto text-muted">
+                            <select
+                                v-model="quickTaskPriority"
+                                class="form-select form-select-sm border-0 py-1 fs-11 text-muted shadow-none bg-light rounded-2"
+                                style="padding-left: 8px; padding-right: 28px !important; min-width: 105px; cursor: pointer;"
+                            >
                                 <option value="low">🟢 Low</option>
                                 <option value="medium">🟡 Medium</option>
                                 <option value="high">🔴 High</option>
@@ -1269,8 +1481,37 @@ const filteredTasks = computed(() => {
                                                 class="col-md-6"
                                             >
                                                 <div class="border rounded-3 p-2 bg-light-subtle d-flex align-items-center justify-content-between">
-                                                    <div class="d-flex align-items-center gap-2 overflow-hidden">
-                                                        <i class="ri-file-text-line fs-20 text-primary flex-shrink-0"></i>
+                                                    <div class="d-flex align-items-center gap-2 overflow-hidden flex-grow-1">
+                                                        <!-- Thumbnail / Icon based on type -->
+                                                        <div
+                                                            v-if="isImageFile(att)"
+                                                            class="flex-shrink-0 cursor-pointer"
+                                                            @click="openFilePreview(att)"
+                                                            title="Klik untuk lihat pratinjau gambar"
+                                                        >
+                                                            <img
+                                                                :src="`/tasks/${selectedTask.id}/attachments/${att.id}/preview`"
+                                                                class="rounded border object-fit-cover shadow-2xs"
+                                                                style="width: 38px; height: 38px;"
+                                                                alt="Thumbnail"
+                                                            />
+                                                        </div>
+                                                        <div
+                                                            v-else-if="isPdfFile(att)"
+                                                            class="flex-shrink-0 cursor-pointer"
+                                                            @click="openFilePreview(att)"
+                                                            title="Klik untuk lihat pratinjau PDF"
+                                                        >
+                                                            <div class="bg-danger-subtle text-danger rounded d-flex align-items-center justify-content-center shadow-2xs" style="width: 38px; height: 38px;">
+                                                                <i class="ri-file-pdf-fill fs-20"></i>
+                                                            </div>
+                                                        </div>
+                                                        <div v-else class="flex-shrink-0">
+                                                            <div class="bg-primary-subtle text-primary rounded d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+                                                                <i class="ri-file-text-line fs-20"></i>
+                                                            </div>
+                                                        </div>
+
                                                         <div class="overflow-hidden">
                                                             <div class="fw-semibold fs-12 text-truncate" :title="att.original_name">
                                                                 {{ att.original_name }}
@@ -1280,7 +1521,17 @@ const filteredTasks = computed(() => {
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                                                    <div class="d-flex align-items-center gap-1 flex-shrink-0 ms-2">
+                                                        <!-- Preview Button for PDF & Images -->
+                                                        <button
+                                                            v-if="isImageFile(att) || isPdfFile(att)"
+                                                            type="button"
+                                                            class="btn btn-sm btn-light p-1 rounded-circle text-primary"
+                                                            title="Pratinjau Berkas"
+                                                            @click="openFilePreview(att)"
+                                                        >
+                                                            <i class="ri-eye-line fs-14"></i>
+                                                        </button>
                                                         <button
                                                             type="button"
                                                             class="btn btn-sm btn-light p-1 rounded-circle"
@@ -1456,26 +1707,134 @@ const filteredTasks = computed(() => {
                                         />
                                     </div>
 
-                                    <!-- Assignees (Anggota Penanggung Jawab) -->
-                                    <div>
-                                        <label class="form-label fs-12 fw-bold text-muted text-uppercase mb-1">Penanggung Jawab (Assignees)</label>
-                                        <div class="d-flex flex-column gap-2 p-2 rounded-2 border bg-light-subtle max-h-160 overflow-auto">
-                                            <div
-                                                v-for="member in space.members"
+                                    <!-- Assignees (Anggota Penanggung Jawab) - Select2 Style -->
+                                    <div class="position-relative">
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <label class="form-label fs-12 fw-bold text-muted text-uppercase mb-0">
+                                                Penanggung Jawab (Assignees)
+                                            </label>
+                                            <span class="fs-11 text-muted">{{ taskAssigneeIds.length }} dipilih</span>
+                                        </div>
+
+                                        <!-- Select2-style Box Container -->
+                                        <div
+                                            class="form-control form-control-sm p-1 d-flex flex-wrap align-items-center gap-1 cursor-pointer bg-light-subtle rounded-2 min-h-38"
+                                            :class="{ 'border-primary shadow-xs': isAssigneeDropdownOpen }"
+                                            @click="isAssigneeDropdownOpen = !isAssigneeDropdownOpen"
+                                        >
+                                            <!-- Selected Assignee Badges/Pills -->
+                                            <span
+                                                v-for="member in selectedAssigneeObjects"
                                                 :key="member.id"
-                                                class="form-check d-flex align-items-center gap-2 mb-0"
+                                                class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 d-flex align-items-center gap-1 fs-11"
+                                                @click.stop
                                             >
+                                                <span
+                                                    class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
+                                                    style="width: 16px; height: 16px; font-size: 9px;"
+                                                >
+                                                    {{ member.name.charAt(0).toUpperCase() }}
+                                                </span>
+                                                <span class="text-truncate" style="max-width: 110px;">{{ member.name }}</span>
+                                                <i
+                                                    class="ri-close-line cursor-pointer fs-12 text-muted hover-text-danger"
+                                                    title="Hapus penanggung jawab"
+                                                    @click.stop="removeAssignee(member.id)"
+                                                ></i>
+                                            </span>
+
+                                            <!-- Placeholder when none selected -->
+                                            <span
+                                                v-if="!selectedAssigneeObjects.length && !isAssigneeDropdownOpen"
+                                                class="text-muted fs-12 ps-2"
+                                            >
+                                                Pilih penanggung jawab...
+                                            </span>
+
+                                            <!-- Caret Indicator -->
+                                            <div class="ms-auto pe-2 text-muted">
+                                                <i :class="isAssigneeDropdownOpen ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i>
+                                            </div>
+                                        </div>
+
+                                        <!-- Select2 Dropdown Menu -->
+                                        <div
+                                            v-if="isAssigneeDropdownOpen"
+                                            class="card position-absolute w-100 mt-1 border shadow-lg rounded-3 p-2 bg-body"
+                                            style="z-index: 1070; max-height: 260px;"
+                                            @click.stop
+                                        >
+                                            <!-- Search Filter Input -->
+                                            <div class="input-group input-group-sm mb-2">
+                                                <span class="input-group-text bg-transparent border-end-0">
+                                                    <i class="ri-search-line text-muted fs-12"></i>
+                                                </span>
                                                 <input
-                                                    :id="`assignee-${member.id}`"
-                                                    v-model="taskAssigneeIds"
-                                                    type="checkbox"
-                                                    class="form-check-input cursor-pointer"
-                                                    :value="member.id"
-                                                    @change="saveTaskDetails"
+                                                    v-model="assigneeSearchQuery"
+                                                    type="text"
+                                                    class="form-control border-start-0 fs-12"
+                                                    placeholder="Cari anggota tim..."
+                                                    autofocus
                                                 />
-                                                <label :for="`assignee-${member.id}`" class="form-check-label fs-12 cursor-pointer text-body">
-                                                    {{ member.name }}
-                                                </label>
+                                                <button
+                                                    v-if="assigneeSearchQuery"
+                                                    type="button"
+                                                    class="btn btn-sm btn-link text-muted border border-start-0 p-1"
+                                                    @click="assigneeSearchQuery = ''"
+                                                >
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            </div>
+
+                                            <!-- Members Option List -->
+                                            <div class="d-flex flex-column gap-1 overflow-auto pe-1" style="max-height: 160px;">
+                                                <div
+                                                    v-for="member in filteredMembers"
+                                                    :key="member.id"
+                                                    class="d-flex align-items-center justify-content-between p-1 px-2 rounded-2 cursor-pointer transition-all hover-bg-light"
+                                                    :class="{ 'bg-primary-subtle text-primary': taskAssigneeIds.includes(member.id) }"
+                                                    @click="toggleAssignee(member.id)"
+                                                >
+                                                    <div class="d-flex align-items-center gap-2 overflow-hidden">
+                                                        <div
+                                                            class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold fs-11 flex-shrink-0"
+                                                            :class="taskAssigneeIds.includes(member.id) ? 'bg-primary' : 'bg-secondary'"
+                                                            style="width: 24px; height: 24px;"
+                                                        >
+                                                            {{ member.name.charAt(0).toUpperCase() }}
+                                                        </div>
+                                                        <div class="overflow-hidden">
+                                                            <div class="fs-12 fw-semibold text-truncate">{{ member.name }}</div>
+                                                            <div class="fs-10 text-muted text-truncate">{{ member.email }}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex-shrink-0 ms-2">
+                                                        <i
+                                                            v-if="taskAssigneeIds.includes(member.id)"
+                                                            class="ri-checkbox-circle-fill text-primary fs-16"
+                                                        ></i>
+                                                        <i
+                                                            v-else
+                                                            class="ri-checkbox-blank-circle-line text-muted fs-16"
+                                                        ></i>
+                                                    </div>
+                                                </div>
+
+                                                <div v-if="!filteredMembers.length" class="text-center py-3 text-muted fs-12">
+                                                    Tidak ada anggota ditemukan.
+                                                </div>
+                                            </div>
+
+                                            <!-- Dropdown Footer -->
+                                            <div class="border-top pt-2 mt-1 d-flex justify-content-between align-items-center">
+                                                <span class="fs-10 text-muted">{{ filteredMembers.length }} anggota</span>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-xs btn-light rounded-pill px-2 py-0 fs-11 text-muted"
+                                                    @click="isAssigneeDropdownOpen = false"
+                                                >
+                                                    Selesai
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -1488,7 +1847,7 @@ const filteredTasks = computed(() => {
                                             type="button"
                                             class="btn btn-primary rounded-pill w-100 fw-semibold fs-13 py-2"
                                             :disabled="isSavingTask"
-                                            @click="saveTaskDetails"
+                                            @click="saveTaskDetails(true)"
                                         >
                                             <i class="ri-save-line me-1"></i> Simpan Perubahan
                                         </button>
@@ -1504,6 +1863,94 @@ const filteredTasks = computed(() => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- FILE PREVIEW MODAL (IN-APP PDF & IMAGE VIEWER)               -->
+        <!-- ============================================================ -->
+        <div v-if="isPreviewModalOpen && previewingFile" class="modal-backdrop fade show" style="z-index: 1060;" @click="closeFilePreview"></div>
+
+        <div
+            v-if="isPreviewModalOpen && previewingFile"
+            class="modal fade show d-block"
+            tabindex="-1"
+            role="dialog"
+            style="z-index: 1065;"
+        >
+            <div class="modal-dialog modal-xl modal-dialog-centered" :class="{ 'modal-lg': isImageFile(previewingFile) }">
+                <div class="modal-content rounded-3 border-0 shadow-lg overflow-hidden">
+                    <!-- Modal Header -->
+                    <div class="modal-header py-3 px-4 bg-light border-bottom d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center gap-2 overflow-hidden me-3">
+                            <i v-if="isPdfFile(previewingFile)" class="ri-file-pdf-fill fs-22 text-danger flex-shrink-0"></i>
+                            <i v-else-if="isImageFile(previewingFile)" class="ri-image-line fs-22 text-success flex-shrink-0"></i>
+                            <i v-else class="ri-file-line fs-22 text-primary flex-shrink-0"></i>
+                            <div class="overflow-hidden">
+                                <h6 class="modal-title fw-bold fs-14 text-truncate mb-0" :title="previewingFile.original_name">
+                                    {{ previewingFile.original_name }}
+                                </h6>
+                                <span class="fs-11 text-muted">{{ formatFileSize(previewingFile.size_bytes) }} • Diunggah oleh {{ previewingFile.uploader?.name || 'User' }}</span>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-primary rounded-pill px-3 fs-12 fw-semibold"
+                                @click="downloadAttachment(previewingFile)"
+                            >
+                                <i class="ri-download-2-line me-1"></i> Unduh
+                            </button>
+                            <button type="button" class="btn-close" @click="closeFilePreview"></button>
+                        </div>
+                    </div>
+
+                    <!-- Modal Body: Render Image or PDF -->
+                    <div class="modal-body p-3 bg-body-tertiary d-flex align-items-center justify-content-center" style="min-height: 420px; max-height: 80vh; overflow: auto;">
+                        <!-- PDF Preview with iframe -->
+                        <div v-if="isPdfFile(previewingFile)" class="w-100" style="height: 72vh;">
+                            <iframe
+                                :src="`/tasks/${selectedTask?.id}/attachments/${previewingFile.id}/preview`"
+                                class="w-100 h-100 rounded border bg-white"
+                                title="PDF Preview"
+                            ></iframe>
+                        </div>
+
+                        <!-- Image Preview -->
+                        <div v-else-if="isImageFile(previewingFile)" class="text-center p-2 w-100 d-flex justify-content-center">
+                            <img
+                                :src="`/tasks/${selectedTask?.id}/attachments/${previewingFile.id}/preview`"
+                                class="img-fluid rounded shadow-sm border"
+                                style="max-height: 72vh; object-fit: contain;"
+                                :alt="previewingFile.original_name"
+                            />
+                        </div>
+
+                        <!-- Fallback for other file types -->
+                        <div v-else class="text-center p-5">
+                            <i class="ri-file-warning-line fs-48 text-warning mb-2"></i>
+                            <h6 class="fw-bold">Pratinjau langsung tidak tersedia untuk format berkas ini.</h6>
+                            <p class="text-muted fs-12 mb-3">Silakan unduh berkas untuk membukanya di komputer Anda.</p>
+                            <button
+                                type="button"
+                                class="btn btn-primary btn-sm rounded-pill px-4 fw-semibold"
+                                @click="downloadAttachment(previewingFile)"
+                            >
+                                <i class="ri-download-2-line me-1"></i> Unduh Berkas
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Modal Footer -->
+                    <div class="modal-footer py-2 px-4 border-top bg-light d-flex justify-content-between align-items-center">
+                        <span class="fs-12 text-muted">
+                            <i class="ri-information-line me-1"></i> Mode pratinjau berkas
+                        </span>
+                        <button type="button" class="btn btn-sm btn-secondary rounded-pill px-4" @click="closeFilePreview">
+                            Tutup
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1543,6 +1990,18 @@ const filteredTasks = computed(() => {
 }
 .max-h-160 {
     max-height: 160px;
+}
+.min-h-38 {
+    min-height: 38px;
+}
+.hover-bg-light:hover {
+    background-color: var(--bs-light) !important;
+}
+.hover-text-danger:hover {
+    color: var(--bs-danger) !important;
+}
+.shadow-2xs {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 /* Sortable Drag Styles */

@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/spaces', [SpaceController::class, 'index'])->name('spaces.index');
     Route::post('/spaces', [SpaceController::class, 'store'])->name('spaces.store');
     Route::get('/spaces/{space:slug}', [SpaceController::class, 'show'])->name('spaces.show');
+    Route::get('/spaces/{space:slug}/sync', [SpaceController::class, 'sync'])->name('spaces.sync');
     Route::put('/spaces/{space}', [SpaceController::class, 'update'])->name('spaces.update');
     Route::delete('/spaces/{space}', [SpaceController::class, 'destroy'])->name('spaces.destroy');
 
@@ -66,12 +67,14 @@ Route::middleware('auth')->group(function () {
     Route::delete('/tasks/{task}/checklists/{checklist}', [\App\Http\Controllers\TaskChecklistController::class, 'destroy'])->name('tasks.checklists.destroy');
 
     // Task Comments
+    Route::get('/tasks/{task}/comments', [\App\Http\Controllers\TaskCommentController::class, 'index'])->name('tasks.comments.index');
     Route::post('/tasks/{task}/comments', [\App\Http\Controllers\TaskCommentController::class, 'store'])->name('tasks.comments.store');
     Route::delete('/tasks/{task}/comments/{comment}', [\App\Http\Controllers\TaskCommentController::class, 'destroy'])->name('tasks.comments.destroy');
 
     // Task Attachments
     Route::post('/tasks/{task}/attachments', [\App\Http\Controllers\TaskAttachmentController::class, 'store'])->name('tasks.attachments.store');
     Route::get('/tasks/{task}/attachments/{attachment}/download', [\App\Http\Controllers\TaskAttachmentController::class, 'download'])->name('tasks.attachments.download');
+    Route::get('/tasks/{task}/attachments/{attachment}/preview', [\App\Http\Controllers\TaskAttachmentController::class, 'preview'])->name('tasks.attachments.preview');
     Route::delete('/tasks/{task}/attachments/{attachment}', [\App\Http\Controllers\TaskAttachmentController::class, 'destroy'])->name('tasks.attachments.destroy');
 
     // Notifications

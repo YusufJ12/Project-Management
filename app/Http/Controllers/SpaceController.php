@@ -176,6 +176,29 @@ class SpaceController extends Controller
         ]);
     }
 
+    public function sync(Request $request, Space $space): JsonResponse
+    {
+        $user = Auth::user();
+
+        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+            return response()->json(['error' => 'Akses ditolak.'], 403);
+        }
+
+        $space->load([
+            'workspace:id,name,slug',
+            'members:id,name,email',
+            'lists.stages.tasks.assignees:id,name,email',
+            'lists.stages.tasks.checklists.completedBy:id,name,email',
+            'lists.stages.tasks.comments.user:id,name,email',
+            'lists.stages.tasks.attachments.uploader:id,name,email',
+            'lists.stages.tasks.creator:id,name,email',
+        ]);
+
+        return response()->json([
+            'space' => $space,
+        ]);
+    }
+
     public function update(Request $request, Space $space): RedirectResponse
     {
         $user = Auth::user();
