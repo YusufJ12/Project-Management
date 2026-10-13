@@ -251,6 +251,27 @@ class PhaseThreeWorkspaceSpaceTest extends TestCase
             'name' => 'Brand New Name',
         ]);
     }
+
+    public function test_user_can_delete_space(): void
+    {
+        $owner = User::factory()->create();
+
+        $workspace = Workspace::create(['name' => 'WS', 'slug' => 'ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+
+        $space = Space::create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Space to Delete',
+            'slug' => 'space-to-delete',
+        ]);
+
+        $response = $this->actingAs($owner)->delete("/spaces/{$space->id}");
+
+        $response->assertRedirect('/spaces');
+        $this->assertDatabaseMissing('spaces', [
+            'id' => $space->id,
+        ]);
+    }
 }
 
 

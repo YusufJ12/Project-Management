@@ -33,6 +33,17 @@ const updateSpace = () => {
     editForm.put(`/spaces/${props.space.id}`);
 };
 
+const deleteCurrentSpace = async () => {
+    const confirmed = await confirmDelete({
+        title: 'Hapus Space / Proyek?',
+        text: `PERINGATAN: Menghapus Space "${props.space.name}" akan menghapus seluruh papan Kanban, task, komentar, dan lampiran berkas secara permanen.`,
+        confirmButtonText: 'Ya, Hapus Permanen!',
+    });
+    if (confirmed) {
+        router.delete(`/spaces/${props.space.id}`);
+    }
+};
+
 // Quick Add Task State
 const activeQuickAddStageId = ref(null);
 const quickTaskTitle = ref('');
@@ -1056,6 +1067,26 @@ const filteredTasks = computed(() => {
                     Simpan Perubahan
                 </button>
             </form>
+
+            <!-- Zona Bahaya / Hapus Space -->
+            <div class="card border border-danger-subtle bg-danger-subtle bg-opacity-10 rounded-3 p-4 mt-4 shadow-sm">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="ri-error-warning-fill text-danger fs-18"></i>
+                    <h6 class="fw-bold text-danger mb-0 fs-14">Zona Bahaya</h6>
+                </div>
+                <p class="text-muted fs-12 mb-3">
+                    Menghapus Space ini akan menghapus seluruh papan Kanban, daftar tugas, komentar diskusi, dan lampiran berkas secara permanen. Tindakan ini tidak dapat dibatalkan.
+                </p>
+                <div>
+                    <button
+                        type="button"
+                        class="btn btn-danger btn-sm rounded-pill px-3 fw-semibold shadow-xs"
+                        @click="deleteCurrentSpace"
+                    >
+                        <i class="ri-delete-bin-line me-1"></i> Hapus Space Ini
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- ============================================================ -->

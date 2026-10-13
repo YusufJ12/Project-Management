@@ -198,10 +198,17 @@ class SpaceController extends Controller
 
     public function destroy(Space $space): RedirectResponse
     {
-        $space->update(['archived_at' => now()]);
+        $user = Auth::user();
+
+        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+            return back()->with('error', 'Tidak berwenang menghapus Space ini.');
+        }
+
+        $name = $space->name;
+        $space->delete();
 
         return redirect()->route('spaces.index')
-            ->with('success', "Space '{$space->name}' telah diarsipkan.");
+            ->with('success', "Space '{$name}' dan seluruh task di dalamnya berhasil dihapus.");
     }
 }
 

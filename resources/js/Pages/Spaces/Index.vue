@@ -1,7 +1,8 @@
 <script setup>
 import { ref } from 'vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { confirmDelete } from '@/Utils/alert';
 
 const props = defineProps({
     workspace: {
@@ -30,6 +31,17 @@ const createSpace = () => {
             showModal.value = false;
         },
     });
+};
+
+const deleteSpace = async (space) => {
+    const confirmed = await confirmDelete({
+        title: 'Hapus Space / Proyek?',
+        text: `PERINGATAN: Yakin ingin menghapus space "${space.name}"? Seluruh papan Kanban, task, komentar, dan lampiran di dalamnya akan terhapus permanen.`,
+        confirmButtonText: 'Ya, Hapus Space!',
+    });
+    if (confirmed) {
+        router.delete(`/spaces/${space.id}`);
+    }
 };
 </script>
 
@@ -77,17 +89,49 @@ const createSpace = () => {
                 <div class="card h-100 border border-secondary-subtle rounded-3 shadow-sm transition-all hover-shadow">
                     <div class="card-body p-4 d-flex flex-column">
                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="fw-bold mb-0 fs-16 text-truncate">
+                            <h5 class="fw-bold mb-0 fs-16 text-truncate" style="max-width: 180px;">
                                 <Link :href="`/spaces/${space.slug}`" class="text-body text-decoration-none hover-primary">
                                     {{ space.name }}
                                 </Link>
                             </h5>
-                            <span
-                                class="badge rounded-pill px-2 py-1 fs-11"
-                                :class="space.status === 'active' ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-secondary-subtle text-secondary'"
-                            >
-                                {{ space.status === 'active' ? 'Aktif' : 'Selesai' }}
-                            </span>
+                            <div class="d-flex align-items-center gap-1">
+                                <span
+                                    class="badge rounded-pill px-2 py-1 fs-11"
+                                    :class="space.status === 'active' ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-secondary-subtle text-secondary'"
+                                >
+                                    {{ space.status === 'active' ? 'Aktif' : 'Selesai' }}
+                                </span>
+                                <div class="dropdown">
+                                    <button
+                                        class="btn btn-sm btn-light border-0 text-muted p-1 rounded-circle"
+                                        type="button"
+                                        data-bs-toggle="dropdown"
+                                        aria-expanded="false"
+                                        title="Opsi Space"
+                                    >
+                                        <i class="ri-more-2-fill fs-15"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow border rounded-3 p-1 fs-12">
+                                        <li>
+                                            <Link :href="`/spaces/${space.slug}`" class="dropdown-item rounded py-1 px-2 d-flex align-items-center gap-2">
+                                                <i class="ri-kanban-view text-primary"></i>
+                                                <span>Buka Papan</span>
+                                            </Link>
+                                        </li>
+                                        <li><hr class="dropdown-divider my-1"></li>
+                                        <li>
+                                            <button
+                                                type="button"
+                                                class="dropdown-item rounded py-1 px-2 d-flex align-items-center gap-2 text-danger"
+                                                @click="deleteSpace(space)"
+                                            >
+                                                <i class="ri-delete-bin-line"></i>
+                                                <span>Hapus Space</span>
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
 
                         <p class="text-muted fs-12 mb-3 text-truncate-2" style="min-height: 36px;">

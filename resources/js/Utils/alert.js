@@ -130,3 +130,4 @@ export const showError = (title = 'Terjadi Kesalahan', text = '') => {
 };
 
 export default CustomSwal;
+
