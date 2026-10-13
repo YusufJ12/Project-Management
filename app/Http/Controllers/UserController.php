@@ -90,7 +90,7 @@ class UserController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'username' => ['nullable', 'string', 'max:50', 'alpha_dash', 'unique:users,username'],
             'password' => ['required', Password::defaults()],
-            'role' => ['required', Rule::in(['super_admin', 'admin', 'member'])],
+            'role' => ['required', Rule::in(['admin', 'member'])],
         ]);
 
         $user = User::create([
@@ -126,9 +126,9 @@ class UserController extends Controller
             'password' => ['nullable', Password::defaults()],
         ];
 
-        // Jika bukan super_admin, role boleh diubah
+        // Jika bukan super_admin, role boleh diubah antara admin atau member saja
         if (! $user->isSuperAdmin()) {
-            $rules['role'] = ['required', Rule::in(['admin', 'member', 'super_admin'])];
+            $rules['role'] = ['required', Rule::in(['admin', 'member'])];
         }
 
         $validated = $request->validate($rules);
@@ -169,7 +169,7 @@ class UserController extends Controller
         }
 
         $validated = $request->validate([
-            'role' => ['required', Rule::in(['super_admin', 'admin', 'member'])],
+            'role' => ['required', Rule::in(['admin', 'member'])],
         ]);
 
         $user->role = $validated['role'];

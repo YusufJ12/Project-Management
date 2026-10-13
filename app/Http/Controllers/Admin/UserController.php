@@ -27,7 +27,7 @@ class UserController extends Controller
             'username' => ['required', 'string', 'max:50', 'alpha_dash', 'unique:users,username'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
-            'role' => ['required', 'in:super_admin,admin'],
+            'role' => ['required', 'in:admin'],
         ]);
 
         $user = User::create([
@@ -46,20 +46,28 @@ class UserController extends Controller
 
     public function update(Request $request, User $user): RedirectResponse
     {
-        $validated = $request->validate([
+        $rules = [
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:50', 'alpha_dash', Rule::unique('users', 'username')->ignore($user->id)],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'role' => ['required', 'in:super_admin,admin'],
             'password' => ['nullable', 'string', 'min:6'],
-        ]);
+        ];
+
+        if (! $user->isSuperAdmin()) {
+            $rules['role'] = ['required', 'in:admin'];
+        }
+
+        $validated = $request->validate($rules);
 
         $userData = [
             'name' => $validated['name'],
             'username' => strtolower($validated['username']),
             'email' => $validated['email'],
-            'role' => $validated['role'],
         ];
+
+        if (! $user->isSuperAdmin() && isset($validated['role'])) {
+            $userData['role'] = $validated['role'];
+        }
 
         if (! empty($validated['password'])) {
             $userData['password'] = Hash::make($validated['password']);

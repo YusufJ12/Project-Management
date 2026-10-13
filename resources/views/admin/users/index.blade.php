@@ -42,9 +42,9 @@
                     <div class="mb-4">
                         <label class="form-label fw-semibold fs-13">Peran / Role <span class="text-danger">*</span></label>
                         <select name="role" class="form-select" required>
-                            <option value="admin">Admin Operator Biasa</option>
-                            <option value="super_admin">Super Admin (Akses Penuh Vault)</option>
+                            <option value="admin">Administrator Operator</option>
                         </select>
+                        <div class="form-text fs-11 text-muted">Role Super Admin adalah tunggal & permanen.</div>
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">
@@ -170,10 +170,14 @@
                                                             </div>
                                                             <div class="mb-3">
                                                                 <label class="form-label fw-semibold fs-13">Peran / Role <span class="text-danger">*</span></label>
-                                                                <select name="role" class="form-select" required>
-                                                                    <option value="admin" {{ $u->role === 'admin' ? 'selected' : '' }}>Admin Operator Biasa</option>
-                                                                    <option value="super_admin" {{ $u->role === 'super_admin' ? 'selected' : '' }}>Super Admin (Akses Penuh Vault)</option>
-                                                                </select>
+                                                                @if($u->role === 'super_admin')
+                                                                    <input type="text" class="form-control bg-light text-danger fw-semibold" value="Super Admin (Role Permanen)" disabled>
+                                                                    <input type="hidden" name="role" value="super_admin">
+                                                                @else
+                                                                    <select name="role" class="form-select" required>
+                                                                        <option value="admin" selected>Administrator Operator</option>
+                                                                    </select>
+                                                                @endif
                                                             </div>
                                                             <div class="mb-2">
                                                                 <label class="form-label fw-semibold fs-13">Password Baru <span class="text-muted fw-normal fs-11">(Kosongkan jika tidak diubah)</span></label>

@@ -516,8 +516,10 @@ const getRoleLabel = (r) => {
                                 <select v-model="createForm.role" class="form-select">
                                     <option value="member">Anggota Biasa (Member)</option>
                                     <option value="admin">Administrator</option>
-                                    <option value="super_admin">Super Admin (Hak Penuh)</option>
                                 </select>
+                                <div class="form-text fs-11 text-muted">
+                                    <i class="ri-shield-check-line me-1 text-primary"></i>Super Admin adalah peran tunggal permanen sistem dan tidak dapat ditambahkan lagi.
+                                </div>
                             </div>
                         </div>
                         <div class="modal-footer border-top border-secondary-subtle">
