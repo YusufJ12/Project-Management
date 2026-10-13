@@ -111,6 +111,14 @@ class SpaceController extends Controller
             'joined_at' => now(),
         ]);
 
+        // Secara otomatis masukkan seluruh anggota workspace yang ada ke dalam space ini
+        $otherMemberIds = $workspace->members()->where('users.id', '!=', $user->id)->pluck('users.id');
+        foreach ($otherMemberIds as $memberId) {
+            $space->members()->syncWithoutDetaching([
+                $memberId => ['role' => 'member', 'joined_at' => now()],
+            ]);
+        }
+
         // Create default Task List
         $list = TaskList::create([
             'space_id' => $space->id,

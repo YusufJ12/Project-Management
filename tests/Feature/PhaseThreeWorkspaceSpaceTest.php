@@ -170,5 +170,87 @@ class PhaseThreeWorkspaceSpaceTest extends TestCase
             'status' => 'completed',
         ]);
     }
+
+    public function test_workspace_owner_can_add_member_to_workspace(): void
+    {
+        $owner = User::factory()->create();
+        $newMember = User::factory()->create();
+
+        $workspace = Workspace::create(['name' => 'WS', 'slug' => 'ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+
+        $response = $this->actingAs($owner)->post("/workspaces/{$workspace->id}/members", [
+            'user_id' => $newMember->id,
+            'role' => 'member',
+        ]);
+
+        $response->assertRedirect();
+        $this->assertTrue($workspace->members()->where('users.id', $newMember->id)->exists());
+    }
+
+    public function test_workspace_owner_can_update_member_role(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+
+        $workspace = Workspace::create(['name' => 'WS', 'slug' => 'ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+        $workspace->members()->attach($member->id, ['role' => 'member']);
+
+        $response = $this->actingAs($owner)->put("/workspaces/{$workspace->id}/members/{$member->id}", [
+            'role' => 'admin',
+        ]);
+
+        $response->assertRedirect();
+        $this->assertEquals('admin', $workspace->members()->where('users.id', $member->id)->first()->pivot->role);
+    }
+
+    public function test_workspace_owner_can_remove_member_from_workspace(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+
+        $workspace = Workspace::create(['name' => 'WS', 'slug' => 'ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+        $workspace->members()->attach($member->id, ['role' => 'member']);
+
+        $response = $this->actingAs($owner)->delete("/workspaces/{$workspace->id}/members/{$member->id}");
+
+        $response->assertRedirect();
+        $this->assertFalse($workspace->members()->where('users.id', $member->id)->exists());
+    }
+
+    public function test_cannot_remove_workspace_owner(): void
+    {
+        $owner = User::factory()->create();
+
+        $workspace = Workspace::create(['name' => 'WS', 'slug' => 'ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+
+        $response = $this->actingAs($owner)->delete("/workspaces/{$workspace->id}/members/{$owner->id}");
+
+        $response->assertRedirect();
+        $response->assertSessionHas('error');
+        $this->assertTrue($workspace->members()->where('users.id', $owner->id)->exists());
+    }
+
+    public function test_workspace_owner_can_update_workspace_name(): void
+    {
+        $owner = User::factory()->create();
+
+        $workspace = Workspace::create(['name' => 'Old WS', 'slug' => 'old-ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+
+        $response = $this->actingAs($owner)->put("/workspaces/{$workspace->id}", [
+            'name' => 'Brand New Name',
+        ]);
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('workspaces', [
+            'id' => $workspace->id,
+            'name' => 'Brand New Name',
+        ]);
+    }
 }
+
 

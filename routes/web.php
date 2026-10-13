@@ -39,7 +39,12 @@ Route::middleware('auth')->group(function () {
     // Workspace Management
     Route::get('/workspaces', [WorkspaceController::class, 'index'])->name('workspaces.index');
     Route::post('/workspaces', [WorkspaceController::class, 'store'])->name('workspaces.store');
+    Route::put('/workspaces/{workspace}', [WorkspaceController::class, 'update'])->name('workspaces.update');
+    Route::delete('/workspaces/{workspace}', [WorkspaceController::class, 'destroy'])->name('workspaces.destroy');
     Route::post('/workspaces/{workspace}/switch', [WorkspaceController::class, 'switch'])->name('workspaces.switch');
+    Route::post('/workspaces/{workspace}/members', [WorkspaceController::class, 'addMember'])->name('workspaces.members.store');
+    Route::put('/workspaces/{workspace}/members/{user}', [WorkspaceController::class, 'updateMemberRole'])->name('workspaces.members.update');
+    Route::delete('/workspaces/{workspace}/members/{user}', [WorkspaceController::class, 'removeMember'])->name('workspaces.members.destroy');
 
     // Space & Project Management
     Route::get('/spaces', [SpaceController::class, 'index'])->name('spaces.index');
