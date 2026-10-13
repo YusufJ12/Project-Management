@@ -95,31 +95,6 @@ const markAllNotificationsRead = () => {
     });
 };
 
-onMounted(() => {
-    // Theme setup
-    const savedTheme = localStorage.getItem('data-bs-theme') || 'light';
-    currentTheme.value = savedTheme;
-    document.documentElement.setAttribute('data-bs-theme', savedTheme);
-
-    // Sidebar setup
-    if (window.innerWidth >= 992) {
-        const savedSidebar = localStorage.getItem('data-sidebar');
-        if (savedSidebar === 'icon') {
-            isSidebarMinimized.value = true;
-            document.documentElement.setAttribute('data-sidebar', 'icon');
-        } else {
-            isSidebarMinimized.value = false;
-            document.documentElement.setAttribute('data-sidebar', 'default');
-        }
-    } else {
-        document.documentElement.removeAttribute('data-sidebar');
-    }
-
-    checkFlash();
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('scroll', handleScroll);
-});
-
 // Flash Alerts System
 const activeAlert = ref({
     type: null,
@@ -173,6 +148,31 @@ const scrollToTop = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 };
+
+onMounted(() => {
+    // Theme setup
+    const savedTheme = localStorage.getItem('data-bs-theme') || 'light';
+    currentTheme.value = savedTheme;
+    document.documentElement.setAttribute('data-bs-theme', savedTheme);
+
+    // Sidebar setup
+    if (window.innerWidth >= 992) {
+        const savedSidebar = localStorage.getItem('data-sidebar');
+        if (savedSidebar === 'icon') {
+            isSidebarMinimized.value = true;
+            document.documentElement.setAttribute('data-sidebar', 'icon');
+        } else {
+            isSidebarMinimized.value = false;
+            document.documentElement.setAttribute('data-sidebar', 'default');
+        }
+    } else {
+        document.documentElement.removeAttribute('data-sidebar');
+    }
+
+    checkFlash();
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleScroll);
+});
 
 onUnmounted(() => {
     if (typeof window !== 'undefined') {

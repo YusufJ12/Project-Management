@@ -1,5 +1,5 @@
 <script setup>
-import { useForm, Link, Head } from '@inertiajs/vue3';
+import { useForm, Head } from '@inertiajs/vue3';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 
 const form = useForm({
