@@ -82,11 +82,6 @@ const submit = () => {
                 <span>Masuk Sekarang</span>
             </button>
         </form>
-
-        <div class="mt-4 pt-2 border-top text-center fs-13 text-muted">
-            Belum memiliki akun?
-            <Link href="/register" class="text-primary fw-semibold text-decoration-none">Daftar Akun Baru</Link>
-        </div>
     </GuestLayout>
 </template>
 

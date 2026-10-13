@@ -21,7 +21,7 @@ import { Link } from '@inertiajs/vue3';
         </div>
 
         <div class="mt-4 text-center text-muted fs-12">
-            2026 © <span class="fw-semibold text-primary">ProjectSphere</span> by NexSphere Studio. Hak Cipta Dilindungi.
+            2026 © <span class="fw-semibold text-primary">ProjectSphere</span>. Hak Cipta Dilindungi.
         </div>
     </div>
 </template>

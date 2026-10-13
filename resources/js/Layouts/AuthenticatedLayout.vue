@@ -489,11 +489,11 @@ onUnmounted(() => {
             <div class="container-fluid px-3 px-md-4">
                 <div class="row align-items-center">
                     <div class="col-sm-6 text-center text-sm-start fs-12 text-muted">
-                        2026 © <span class="fw-semibold text-primary">ProjectSphere</span> by NexSphere Studio. Hak Cipta Dilindungi.
+                        2026 © <span class="fw-semibold text-primary">ProjectSphere</span>. Hak Cipta Dilindungi.
                     </div>
                     <div class="col-sm-6">
-                        <div class="text-sm-end text-center d-none d-sm-block text-muted fs-12">
-                            Crafted with <i class="ri-heart-fill text-danger align-middle animate-heart"></i> for Tim Kolaborasi Proyek
+                        <div class="text-sm-end text-center d-none d-sm-block text-muted fs-12 fw-medium">
+                            NexSphere
                         </div>
                     </div>
                 </div>
