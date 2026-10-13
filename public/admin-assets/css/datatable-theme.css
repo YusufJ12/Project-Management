@@ -1,0 +1,434 @@
+/* ========================================
+   DataTables Dark/Light Mode Support
+   & Responsive Fixes (Bootstrap 5 Standard)
+   ======================================== */
+
+/* General Pagination Standard Layout */
+.dataTables_wrapper .dataTables_paginate {
+    margin: 0;
+    white-space: nowrap;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.dataTables_wrapper .dataTables_paginate ul.pagination {
+    margin: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    list-style: none;
+    padding-left: 0;
+    gap: 2px;
+}
+
+/* Reset default li.paginate_button so li has no border/background/padding */
+.dataTables_wrapper .dataTables_paginate li.paginate_button,
+.dataTables_wrapper .dataTables_paginate li.page-item {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-block !important;
+}
+
+/* Style actual link element a.page-link */
+.dataTables_wrapper .dataTables_paginate .page-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 0.375rem !important;
+    color: #495057;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+    text-decoration: none;
+    box-shadow: none !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .page-link:hover {
+    color: #0d6efd;
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.dataTables_wrapper .dataTables_paginate .page-item.active .page-link,
+.dataTables_wrapper .dataTables_paginate .page-item.active .page-link:hover {
+    color: #fff !important;
+    background-color: #0d6efd !important;
+    border-color: #0d6efd !important;
+    font-weight: 600;
+}
+
+.dataTables_wrapper .dataTables_paginate .page-item.disabled .page-link {
+    color: #adb5bd !important;
+    background-color: #f8fafc !important;
+    border-color: #e2e8f0 !important;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.dataTables_wrapper .dataTables_info {
+    font-size: 0.8125rem;
+    color: #64748b;
+    padding-top: 0 !important;
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+}
+
+/* Light Mode Inputs & Table */
+[data-bs-theme="light"] .dataTables_wrapper .dataTables_filter input,
+[data-bs-theme="light"] .dataTables_wrapper .dataTables_length select {
+    color: #212529;
+    background-color: #fff;
+    border: 1px solid #ced4da;
+}
+
+[data-bs-theme="light"] table.dataTable thead th,
+[data-bs-theme="light"] table.dataTable thead td {
+    border-bottom: 2px solid #dee2e6;
+}
+
+[data-bs-theme="light"] table.dataTable.table-striped > tbody > tr.odd > * {
+    box-shadow: inset 0 0 0 9999px rgba(0, 0, 0, 0.03);
+}
+
+/* Dark Mode */
+[data-bs-theme="dark"] .dataTables_wrapper {
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .dataTables_wrapper .dataTables_length label,
+[data-bs-theme="dark"] .dataTables_wrapper .dataTables_filter label {
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .dataTables_wrapper .dataTables_paginate .page-link {
+    color: #cbd5e1;
+    background-color: #1e293b;
+    border-color: #334155;
+}
+
+[data-bs-theme="dark"] .dataTables_wrapper .dataTables_paginate .page-link:hover {
+    color: #fff;
+    background-color: #334155;
+    border-color: #475569;
+}
+
+[data-bs-theme="dark"] .dataTables_wrapper .dataTables_paginate .page-item.active .page-link {
+    color: #fff !important;
+    background-color: #0d6efd !important;
+    border-color: #0d6efd !important;
+}
+
+[data-bs-theme="dark"] .dataTables_wrapper .dataTables_paginate .page-item.disabled .page-link {
+    color: #64748b !important;
+    background-color: rgba(255, 255, 255, 0.02) !important;
+    border-color: #334155 !important;
+}
+
+[data-bs-theme="dark"] .dataTables_wrapper .dataTables_info {
+    color: #94a3b8;
+}
+
+[data-bs-theme="dark"] table.dataTable {
+    color: #dee2e6;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] table.dataTable thead th,
+[data-bs-theme="dark"] table.dataTable thead td {
+    color: #fff;
+    background-color: #343a40;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] table.dataTable tbody td {
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] table.dataTable.table-striped > tbody > tr.odd > * {
+    box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.03);
+}
+
+[data-bs-theme="dark"] table.dataTable.table-hover > tbody > tr:hover > * {
+    box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.075);
+}
+
+[data-bs-theme="dark"] .table > :not(caption) > * > * {
+    background-color: transparent;
+    color: #dee2e6;
+    border-bottom-color: #495057;
+}
+
+[data-bs-theme="dark"] .table-dark {
+    --bs-table-bg: #343a40;
+    --bs-table-striped-bg: #2d3238;
+    --bs-table-striped-color: #fff;
+    --bs-table-active-bg: #373b3e;
+    --bs-table-active-color: #fff;
+    --bs-table-hover-bg: #323539;
+    --bs-table-hover-color: #fff;
+    color: #fff;
+    border-color: #495057;
+}
+
+/* DataTables Processing Indicator */
+[data-bs-theme="dark"] .dataTables_wrapper .dataTables_processing {
+    background-color: #2d3238;
+    color: #dee2e6;
+    border: 1px solid #495057;
+}
+
+/* DataTables Empty State */
+[data-bs-theme="dark"] table.dataTable tbody td.dataTables_empty {
+    color: #adb5bd;
+}
+
+/* ========================================
+   Responsive Fixes
+   ======================================== */
+
+/* Make table container scrollable on small screens */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* DataTable wrapper responsive */
+.dataTables_wrapper {
+    width: 100%;
+}
+
+/* Ensure table takes full width */
+table.dataTable {
+    width: 100% !important;
+    max-width: 100%;
+}
+
+/* Make DataTables controls stack on mobile */
+@media screen and (max-width: 768px) {
+    .dataTables_wrapper .dataTables_length,
+    .dataTables_wrapper .dataTables_filter {
+        float: none !important;
+        text-align: left;
+        margin-bottom: 10px;
+    }
+
+    .dataTables_wrapper .dataTables_info,
+    .dataTables_wrapper .dataTables_paginate {
+        float: none !important;
+        justify-content: center !important;
+        text-align: center;
+        margin-top: 10px;
+    }
+
+    /* Make pagination buttons smaller on mobile */
+    .dataTables_wrapper .dataTables_paginate .page-link {
+        min-width: 28px;
+        height: 28px;
+        padding: 0.2rem 0.4rem;
+        font-size: 0.75rem;
+    }
+}
+
+/* Ensure dropdown menus work in dark mode */
+[data-bs-theme="dark"] .dropdown-menu {
+    background-color: #2d3238;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .dropdown-item {
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .dropdown-item:hover,
+[data-bs-theme="dark"] .dropdown-item:focus {
+    background-color: #495057;
+    color: #fff;
+}
+
+[data-bs-theme="dark"] .dropdown-divider {
+    border-top-color: #495057;
+}
+
+/* Card styling in dark mode */
+[data-bs-theme="dark"] .card {
+    background-color: #212529;
+    border-color: #495057;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .card-header {
+    background-color: #2d3238;
+    border-bottom-color: #495057;
+    color: #fff;
+}
+
+[data-bs-theme="dark"] .card-footer {
+    background-color: #2d3238;
+    border-top-color: #495057;
+}
+
+/* Form controls in dark mode */
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select {
+    color: #dee2e6;
+    background-color: #2d3238;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .form-control:focus,
+[data-bs-theme="dark"] .form-select:focus {
+    color: #dee2e6;
+    background-color: #2d3238;
+    border-color: #6ea8fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+[data-bs-theme="dark"] .form-control::placeholder {
+    color: #6c757d;
+}
+
+[data-bs-theme="dark"] .form-control:disabled,
+[data-bs-theme="dark"] .form-select:disabled {
+    background-color: #343a40;
+    color: #6c757d;
+}
+
+/* Modal in dark mode */
+[data-bs-theme="dark"] .modal-content {
+    background-color: #212529;
+    border-color: #495057;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .modal-header {
+    border-bottom-color: #495057;
+}
+
+[data-bs-theme="dark"] .modal-footer {
+    border-top-color: #495057;
+}
+
+[data-bs-theme="dark"] .modal-header .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* Alert in dark mode */
+[data-bs-theme="dark"] .alert-info {
+    color: #6ea8fe;
+    background-color: rgba(13, 110, 253, 0.1);
+    border-color: rgba(13, 110, 253, 0.2);
+}
+
+[data-bs-theme="dark"] .alert-danger {
+    color: #ea868f;
+    background-color: rgba(220, 53, 69, 0.1);
+    border-color: rgba(220, 53, 69, 0.2);
+}
+
+[data-bs-theme="dark"] .alert-success {
+    color: #75b798;
+    background-color: rgba(25, 135, 84, 0.1);
+    border-color: rgba(25, 135, 84, 0.2);
+}
+
+[data-bs-theme="dark"] .alert-warning {
+    color: #ffda6a;
+    background-color: rgba(255, 193, 7, 0.1);
+    border-color: rgba(255, 193, 7, 0.2);
+}
+
+/* Badge improvements for dark mode */
+[data-bs-theme="dark"] .badge.bg-light {
+    background-color: #495057 !important;
+    color: #dee2e6 !important;
+}
+
+[data-bs-theme="dark"] .text-muted {
+    color: #adb5bd !important;
+}
+
+/* Button group in dark mode */
+[data-bs-theme="dark"] .btn-outline-dark {
+    color: #dee2e6;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .btn-outline-dark:hover {
+    background-color: #495057;
+    border-color: #495057;
+    color: #fff;
+}
+
+[data-bs-theme="dark"] .btn-outline-dark.active {
+    background-color: #343a40;
+    border-color: #343a40;
+    color: #fff;
+}
+
+/* Ensure responsive behavior for button groups */
+.btn-group {
+    flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+    .btn-group .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
+
+/* DataTable responsive extension support */
+table.dataTable.dtr-inline.collapsed > tbody > tr > td.dtr-control:before,
+table.dataTable.dtr-inline.collapsed > tbody > tr > th.dtr-control:before {
+    background-color: #00aaad;
+}
+
+[data-bs-theme="dark"]
+    table.dataTable.dtr-inline.collapsed
+    > tbody
+    > tr
+    > td.dtr-control:before,
+[data-bs-theme="dark"]
+    table.dataTable.dtr-inline.collapsed
+    > tbody
+    > tr
+    > th.dtr-control:before {
+    background-color: #6ea8fe;
+}
+
+/* Scrollable table on small screens */
+.dataTables_scrollBody {
+    overflow-x: auto !important;
+}
+
+/* Fixed column widths to prevent layout shift */
+table.dataTable th,
+table.dataTable td {
+    white-space: nowrap;
+}
+
+/* Allow text wrapping for description columns */
+table.dataTable td:nth-child(3),
+table.dataTable th:nth-child(3) {
+    white-space: normal;
+    word-wrap: break-word;
+}
+
+/* Ensure action buttons don't wrap */
+table.dataTable .btn-group {
+    white-space: nowrap;
+}
+
+/* Loading state visibility */
+.dataTables_processing {
+    z-index: 1000;
+}

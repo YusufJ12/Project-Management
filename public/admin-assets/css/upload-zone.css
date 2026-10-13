@@ -1,0 +1,56 @@
+/* ========================================
+   Upload Zone Component (Global)
+   Dipakai di: site-settings, profile, users, custom-apps
+   ======================================== */
+
+.upload-zone {
+    position: relative;
+    border: 2px dashed #ced4da;
+    border-radius: 0.5rem;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    overflow: hidden;
+    background: transparent;
+}
+.upload-zone:hover { border-color: #0d6efd; background: rgba(13,110,253,.04); }
+.upload-zone.has-image { border-style: solid; border-color: #adb5bd; }
+
+.upload-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+}
+
+.upload-zone .upload-placeholder { text-align: center; pointer-events: none; }
+
+.upload-zone .upload-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    max-height: 140px;
+    padding: 8px;
+}
+
+.upload-zone .upload-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    display: none;
+    gap: 6px;
+    padding: 6px 8px;
+    background: rgba(0,0,0,.55);
+    justify-content: center;
+}
+.upload-zone.has-image:hover .upload-overlay { display: flex; }
+.upload-zone .upload-overlay button { font-size: .75rem; padding: 2px 10px; }
+
+/* Dark mode */
+[data-bs-theme="dark"] .upload-zone { border-color: #495057; }
+[data-bs-theme="dark"] .upload-zone:hover { border-color: #6ea8fe; background: rgba(110,168,254,.06); }
+[data-bs-theme="dark"] .upload-zone.has-image { border-color: #6c757d; }
