@@ -70,7 +70,6 @@ class UserController extends Controller
                 'admin' => $totalAdmins,
                 'member' => $totalMembers,
             ],
-            'availableWorkspaces' => Workspace::select('id', 'name')->get(),
         ]);
     }
 
@@ -92,7 +91,6 @@ class UserController extends Controller
             'username' => ['nullable', 'string', 'max:50', 'alpha_dash', 'unique:users,username'],
             'password' => ['required', Password::defaults()],
             'role' => ['required', Rule::in(['super_admin', 'admin', 'member'])],
-            'workspace_id' => ['nullable', 'exists:workspaces,id'],
         ]);
 
         $user = User::create([
@@ -104,15 +102,6 @@ class UserController extends Controller
             'timezone' => 'Asia/Jakarta',
             'theme' => 'light',
         ]);
-
-        // Hubungkan ke workspace jika dipilih
-        if (! empty($validated['workspace_id'])) {
-            $wsRole = $validated['role'] === 'super_admin' || $validated['role'] === 'admin' ? 'admin' : 'member';
-            $user->workspaces()->attach($validated['workspace_id'], [
-                'role' => $wsRole,
-                'joined_at' => now(),
-            ]);
-        }
 
         return redirect()->route('users.index')->with('success', "Pengguna {$user->name} berhasil ditambahkan dengan role {$user->role}.");
     }

@@ -276,11 +276,11 @@ const isOverdue = (task) => {
                 </div>
 
                 <!-- Pagination -->
-                <div v-if="tasks.links && tasks.links.length > 3" class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top border-secondary-subtle">
+                <div v-if="tasks.total > 0" class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 pt-3 border-top border-secondary-subtle">
                     <div class="fs-12 text-muted">
                         Menampilkan {{ tasks.from || 0 }} - {{ tasks.to || 0 }} dari {{ tasks.total }} tugas
                     </div>
-                    <nav>
+                    <nav v-if="tasks.links && tasks.links.length > 1">
                         <ul class="pagination pagination-sm mb-0">
                             <li
                                 v-for="(link, i) in tasks.links"

@@ -115,9 +115,50 @@ onMounted(() => {
         document.documentElement.removeAttribute('data-sidebar');
     }
 
+    checkFlash();
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', handleScroll);
 });
+
+// Flash Alerts System
+const activeAlert = ref({
+    type: null,
+    message: null,
+});
+
+let alertTimeout = null;
+
+const dismissAlert = () => {
+    activeAlert.value.message = null;
+    activeAlert.value.type = null;
+    if (alertTimeout) clearTimeout(alertTimeout);
+};
+
+const checkFlash = () => {
+    const flash = page.props.flash || {};
+    if (flash.success) {
+        activeAlert.value = { type: 'success', message: flash.success };
+    } else if (flash.error) {
+        activeAlert.value = { type: 'error', message: flash.error };
+    } else if (flash.warning) {
+        activeAlert.value = { type: 'warning', message: flash.warning };
+    } else if (flash.info) {
+        activeAlert.value = { type: 'info', message: flash.info };
+    } else {
+        activeAlert.value = { type: null, message: null };
+    }
+
+    if (activeAlert.value.message && activeAlert.value.type !== 'error') {
+        if (alertTimeout) clearTimeout(alertTimeout);
+        alertTimeout = setTimeout(() => {
+            activeAlert.value = { type: null, message: null };
+        }, 5000);
+    }
+};
+
+watch(() => page.props.flash, () => {
+    checkFlash();
+}, { deep: true });
 
 // Scroll to Top
 const showBackToTop = ref(false);
@@ -138,6 +179,7 @@ onUnmounted(() => {
         window.removeEventListener('resize', handleResize);
         window.removeEventListener('scroll', handleScroll);
     }
+    if (alertTimeout) clearTimeout(alertTimeout);
 });
 </script>
 
@@ -408,17 +450,34 @@ onUnmounted(() => {
         <!-- Main Content Wrapper matching MasterHub Layout -->
         <main class="app-wrapper flex-grow-1">
             <div class="container-fluid p-3 p-md-4">
-                <!-- Flash Alerts if any -->
-                <div v-if="$page.props.flash?.success" class="alert alert-success alert-dismissible fade show d-flex align-items-center gap-2 mb-4" role="alert">
-                    <i class="bi bi-check-circle-fill fs-5"></i>
-                    <div>{{ $page.props.flash.success }}</div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-                <div v-if="$page.props.flash?.error" class="alert alert-danger alert-dismissible fade show d-flex align-items-center gap-2 mb-4" role="alert">
-                    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-                    <div>{{ $page.props.flash.error }}</div>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
+                <!-- Flash Alerts System -->
+                <transition name="fade">
+                    <div
+                        v-if="activeAlert.message"
+                        class="alert alert-dismissible fade show d-flex align-items-center justify-content-between gap-3 mb-4 shadow-sm border rounded-3 p-3"
+                        :class="{
+                            'alert-success border-success-subtle bg-success-subtle text-success-emphasis': activeAlert.type === 'success',
+                            'alert-danger border-danger-subtle bg-danger-subtle text-danger-emphasis': activeAlert.type === 'error',
+                            'alert-warning border-warning-subtle bg-warning-subtle text-warning-emphasis': activeAlert.type === 'warning',
+                            'alert-info border-info-subtle bg-info-subtle text-info-emphasis': activeAlert.type === 'info',
+                        }"
+                        role="alert"
+                    >
+                        <div class="d-flex align-items-center gap-2">
+                            <i v-if="activeAlert.type === 'success'" class="ri-checkbox-circle-fill fs-5 text-success"></i>
+                            <i v-else-if="activeAlert.type === 'error'" class="ri-error-warning-fill fs-5 text-danger"></i>
+                            <i v-else-if="activeAlert.type === 'warning'" class="ri-alert-fill fs-5 text-warning"></i>
+                            <i v-else class="ri-information-fill fs-5 text-info"></i>
+                            <span class="fs-13 fw-medium">{{ activeAlert.message }}</span>
+                        </div>
+                        <button
+                            type="button"
+                            class="btn-close position-static p-0"
+                            @click="dismissAlert"
+                            aria-label="Tutup Notifikasi"
+                        ></button>
+                    </div>
+                </transition>
 
                 <!-- Page Content -->
                 <slot />

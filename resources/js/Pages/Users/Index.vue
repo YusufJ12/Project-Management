@@ -24,10 +24,6 @@ const props = defineProps({
             member: 0,
         }),
     },
-    availableWorkspaces: {
-        type: Array,
-        default: () => [],
-    },
 });
 
 const page = usePage();
@@ -71,7 +67,6 @@ const createForm = useForm({
     email: '',
     password: '',
     role: 'member',
-    workspace_id: '',
 });
 
 const submitCreateUser = () => {
@@ -424,11 +419,11 @@ const getRoleLabel = (r) => {
                 </div>
 
                 <!-- Pagination -->
-                <div v-if="users.links && users.links.length > 3" class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top border-secondary-subtle">
+                <div v-if="users.total > 0" class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 pt-3 border-top border-secondary-subtle">
                     <div class="fs-12 text-muted">
                         Menampilkan {{ users.from || 0 }} - {{ users.to || 0 }} dari {{ users.total }} pengguna
                     </div>
-                    <nav>
+                    <nav v-if="users.links && users.links.length > 1">
                         <ul class="pagination pagination-sm mb-0">
                             <li
                                 v-for="(link, i) in users.links"
@@ -522,16 +517,6 @@ const getRoleLabel = (r) => {
                                     <option value="member">Anggota Biasa (Member)</option>
                                     <option value="admin">Administrator</option>
                                     <option value="super_admin">Super Admin (Hak Penuh)</option>
-                                </select>
-                            </div>
-
-                            <div v-if="availableWorkspaces.length" class="mb-3">
-                                <label class="form-label fs-13 fw-semibold">Hubungkan ke Workspace Awal (Opsional)</label>
-                                <select v-model="createForm.workspace_id" class="form-select">
-                                    <option value="">Pilih Workspace...</option>
-                                    <option v-for="ws in availableWorkspaces" :key="ws.id" :value="ws.id">
-                                        {{ ws.name }}
-                                    </option>
                                 </select>
                             </div>
                         </div>
