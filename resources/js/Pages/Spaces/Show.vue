@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import GanttTimeline from '@/Components/GanttTimeline.vue';
 import Sortable from 'sortablejs';
 import { confirmDelete, showToast } from '@/Utils/alert';
 
@@ -167,6 +168,7 @@ const taskTitle = ref('');
 const taskDescription = ref('');
 const taskPriority = ref('medium');
 const taskStageId = ref(null);
+const taskStartDate = ref('');
 const taskDueAt = ref('');
 const taskEstimateMinutes = ref('');
 const taskAssigneeIds = ref([]);
@@ -195,6 +197,7 @@ const openTaskModal = async (task) => {
     taskDescription.value = task.description || '';
     taskPriority.value = task.priority || 'medium';
     taskStageId.value = task.stage_id;
+    taskStartDate.value = task.start_date || '';
     taskDueAt.value = task.due_at || '';
     taskEstimateMinutes.value = task.estimate_minutes || '';
     taskAssigneeIds.value = task.assignees ? task.assignees.map((a) => a.id) : [];
@@ -217,6 +220,8 @@ const openTaskModal = async (task) => {
             const data = await res.json();
             if (data.task) {
                 selectedTask.value = data.task;
+                taskStartDate.value = data.task.start_date || '';
+                taskDueAt.value = data.task.due_at || '';
                 taskActivityLogs.value = data.activity_logs || [];
             }
         }
@@ -250,6 +255,7 @@ const saveTaskDetails = async (showAlert = false) => {
                 description: taskDescription.value,
                 priority: taskPriority.value,
                 stage_id: taskStageId.value,
+                start_date: taskStartDate.value || null,
                 due_at: taskDueAt.value || null,
                 estimate_minutes: taskEstimateMinutes.value ? parseInt(taskEstimateMinutes.value) : null,
                 assignee_ids: taskAssigneeIds.value,
@@ -858,6 +864,16 @@ const filteredTasks = computed(() => {
                         <button
                             type="button"
                             class="nav-link py-2 px-3 fw-semibold fs-13 border-0"
+                            :class="{ 'active border-bottom border-primary border-3 text-primary': activeTab === 'timeline' }"
+                            @click="activeTab = 'timeline'"
+                        >
+                            <i class="ri-git-commit-line me-1"></i> Timeline (Gantt)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button
+                            type="button"
+                            class="nav-link py-2 px-3 fw-semibold fs-13 border-0"
                             :class="{ 'active border-bottom border-primary border-3 text-primary': activeTab === 'overview' }"
                             @click="activeTab = 'overview'"
                         >
@@ -1226,6 +1242,15 @@ const filteredTasks = computed(() => {
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <!-- TAB: TIMELINE (GANTT CHART VIEW) -->
+        <div v-else-if="activeTab === 'timeline'" class="mb-4">
+            <GanttTimeline
+                :tasks="allCurrentTasks"
+                :stages="currentList?.stages || []"
+                @open-task="openTaskModal"
+            />
         </div>
 
         <!-- TAB 2: OVERVIEW & MEMBERS -->
@@ -1683,15 +1708,26 @@ const filteredTasks = computed(() => {
                                         </select>
                                     </div>
 
-                                    <!-- Due Date -->
-                                    <div>
-                                        <label class="form-label fs-12 fw-bold text-muted text-uppercase mb-1">Tenggat Waktu</label>
-                                        <input
-                                            v-model="taskDueAt"
-                                            type="date"
-                                            class="form-control form-control-sm rounded-2"
-                                            @change="saveTaskDetails"
-                                        />
+                                    <!-- Start Date & Due Date -->
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label class="form-label fs-12 fw-bold text-muted text-uppercase mb-1">Mulai</label>
+                                            <input
+                                                v-model="taskStartDate"
+                                                type="date"
+                                                class="form-control form-control-sm rounded-2"
+                                                @change="saveTaskDetails"
+                                            />
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="form-label fs-12 fw-bold text-muted text-uppercase mb-1">Tenggat</label>
+                                            <input
+                                                v-model="taskDueAt"
+                                                type="date"
+                                                class="form-control form-control-sm rounded-2"
+                                                @change="saveTaskDetails"
+                                            />
+                                        </div>
                                     </div>
 
                                     <!-- Estimated Minutes -->

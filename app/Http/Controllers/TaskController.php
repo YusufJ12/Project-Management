@@ -22,6 +22,7 @@ class TaskController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'priority' => ['nullable', 'in:low,medium,high,urgent'],
             'description' => ['nullable', 'string'],
+            'start_date' => ['nullable', 'date'],
             'due_at' => ['nullable', 'date'],
             'assignee_ids' => ['nullable', 'array'],
             'assignee_ids.*' => ['exists:users,id'],
@@ -52,6 +53,7 @@ class TaskController extends Controller
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
             'priority' => $validated['priority'] ?? 'medium',
+            'start_date' => $validated['start_date'] ?? null,
             'due_at' => $validated['due_at'] ?? null,
             'position' => $maxPosition + 1,
         ]);
@@ -124,6 +126,7 @@ class TaskController extends Controller
             'description' => ['nullable', 'string'],
             'priority' => ['required', 'in:low,medium,high,urgent'],
             'stage_id' => ['nullable', 'exists:task_stages,id'],
+            'start_date' => ['nullable', 'date'],
             'due_at' => ['nullable', 'date'],
             'estimate_minutes' => ['nullable', 'integer', 'min:0'],
             'assignee_ids' => ['nullable', 'array'],
@@ -185,6 +188,7 @@ class TaskController extends Controller
             'description' => $validated['description'] ?? null,
             'priority' => $validated['priority'],
             'stage_id' => $validated['stage_id'] ?? $task->stage_id,
+            'start_date' => $validated['start_date'] ?? null,
             'due_at' => $validated['due_at'] ?? null,
             'estimate_minutes' => $validated['estimate_minutes'] ?? null,
         ]);
