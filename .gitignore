@@ -27,3 +27,5 @@ Thumbs.db
 database/*.sqlite
 database/*.sqlite-journal
 /masterhub
+deploy_key*
+*.pub

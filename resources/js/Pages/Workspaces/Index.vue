@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { confirmDelete, confirmAction, showWarning } from '@/Utils/alert';
+import { confirmDelete, confirmAction, showWarning, showToast } from '@/Utils/alert';
 
 const props = defineProps({
     workspaces: {
@@ -29,6 +29,7 @@ const submitCreateWorkspace = () => {
         onSuccess: () => {
             createForm.reset();
             showCreateModal.value = false;
+            showToast('Workspace baru berhasil dibuat!', 'success');
         },
     });
 };
@@ -51,6 +52,7 @@ const submitEditWorkspace = () => {
         onSuccess: () => {
             showEditModal.value = false;
             editWorkspaceForm.reset();
+            showToast('Workspace berhasil diperbarui!', 'success');
         },
     });
 };
@@ -81,11 +83,17 @@ const addMemberForm = useForm({
     role: 'member',
 });
 
+// Select2-style Searchable User Selector
+const userSearchQuery = ref('');
+const isUserDropdownOpen = ref(false);
+
 const openMembersModal = (ws) => {
     selectedWorkspace.value = ws;
     addMemberForm.reset();
     addMemberForm.user_id = '';
     addMemberForm.role = 'member';
+    userSearchQuery.value = '';
+    isUserDropdownOpen.value = false;
     showMembersModal.value = true;
 };
 
@@ -96,6 +104,29 @@ const availableUsers = computed(() => {
     return props.system_users.filter((u) => !memberIds.has(u.id));
 });
 
+const filteredAvailableUsers = computed(() => {
+    if (!userSearchQuery.value.trim()) return availableUsers.value;
+    const q = userSearchQuery.value.toLowerCase();
+    return availableUsers.value.filter((u) =>
+        u.name.toLowerCase().includes(q) ||
+        (u.email && u.email.toLowerCase().includes(q))
+    );
+});
+
+const selectedUserObject = computed(() => {
+    if (!addMemberForm.user_id) return null;
+    return props.system_users.find((u) => u.id === addMemberForm.user_id) || null;
+});
+
+const selectUser = (user) => {
+    addMemberForm.user_id = user.id;
+    isUserDropdownOpen.value = false;
+};
+
+const clearSelectedUser = () => {
+    addMemberForm.user_id = '';
+};
+
 const submitAddMember = () => {
     if (!addMemberForm.user_id) return;
     addMemberForm.post(`/workspaces/${selectedWorkspace.value.id}/members`, {
@@ -103,6 +134,9 @@ const submitAddMember = () => {
         onSuccess: () => {
             addMemberForm.reset();
             addMemberForm.user_id = '';
+            userSearchQuery.value = '';
+            isUserDropdownOpen.value = false;
+            showToast('Anggota baru berhasil ditambahkan!', 'success');
             // Refresh selectedWorkspace with updated data
             const updated = props.workspaces.find((w) => w.id === selectedWorkspace.value.id);
             if (updated) {
@@ -129,6 +163,7 @@ const updateMemberRole = async (member, newRole) => {
         }, {
             preserveScroll: true,
             onSuccess: () => {
+                showToast(`Peran ${member.name} berhasil diubah!`, 'success');
                 const updated = props.workspaces.find((w) => w.id === selectedWorkspace.value.id);
                 if (updated) {
                     selectedWorkspace.value = updated;
@@ -152,6 +187,7 @@ const removeMember = async (member) => {
         router.delete(`/workspaces/${selectedWorkspace.value.id}/members/${member.id}`, {
             preserveScroll: true,
             onSuccess: () => {
+                showToast(`Anggota ${member.name} berhasil dikeluarkan.`, 'success');
                 const updated = props.workspaces.find((w) => w.id === selectedWorkspace.value.id);
                 if (updated) {
                     selectedWorkspace.value = updated;
@@ -421,14 +457,121 @@ const getRoleLabel = (role) => {
 
                             <div v-if="availableUsers.length > 0">
                                 <form @submit.prevent="submitAddMember" class="row g-2 align-items-end">
-                                    <div class="col-md-7">
-                                        <label class="form-label fs-12 fw-semibold">Pilih Pengguna Sistem</label>
-                                        <select v-model="addMemberForm.user_id" class="form-select form-select-sm" required>
-                                            <option value="" disabled>-- Pilih Pengguna Terdaftar --</option>
-                                            <option v-for="user in availableUsers" :key="user.id" :value="user.id">
-                                                {{ user.name }} ({{ user.email }}) — {{ user.role }}
-                                            </option>
-                                        </select>
+                                    <div class="col-md-7 position-relative">
+                                        <label class="form-label fs-12 fw-semibold mb-1">Pilih Pengguna Sistem</label>
+
+                                        <!-- Select2 Trigger Box -->
+                                        <div
+                                            class="form-control form-control-sm d-flex align-items-center justify-content-between cursor-pointer bg-white rounded-2"
+                                            :class="{ 'border-primary shadow-xs': isUserDropdownOpen }"
+                                            style="min-height: 33px;"
+                                            @click="isUserDropdownOpen = !isUserDropdownOpen"
+                                        >
+                                            <div v-if="selectedUserObject" class="d-flex align-items-center gap-2 overflow-hidden flex-grow-1">
+                                                <span
+                                                    class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold fs-10 flex-shrink-0"
+                                                    style="width: 20px; height: 20px;"
+                                                >
+                                                    {{ selectedUserObject.name.charAt(0).toUpperCase() }}
+                                                </span>
+                                                <span class="fs-12 text-truncate fw-semibold text-body">{{ selectedUserObject.name }}</span>
+                                                <span class="fs-11 text-muted text-truncate">({{ selectedUserObject.email }})</span>
+                                                <span class="badge bg-secondary-subtle text-secondary fs-10 text-capitalize ms-auto me-1">
+                                                    {{ selectedUserObject.role }}
+                                                </span>
+                                            </div>
+                                            <span v-else class="text-muted fs-12">-- Cari & Pilih Pengguna Terdaftar --</span>
+
+                                            <div class="d-flex align-items-center gap-1 text-muted flex-shrink-0 ms-1">
+                                                <i
+                                                    v-if="selectedUserObject"
+                                                    class="ri-close-line cursor-pointer fs-14 hover-text-danger"
+                                                    title="Batal pilih"
+                                                    @click.stop="clearSelectedUser"
+                                                ></i>
+                                                <i :class="isUserDropdownOpen ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'" class="fs-14"></i>
+                                            </div>
+                                        </div>
+
+                                        <!-- Select2 Dropdown Menu -->
+                                        <div
+                                            v-if="isUserDropdownOpen"
+                                            class="card position-absolute w-100 mt-1 border shadow-lg rounded-3 p-2 bg-body"
+                                            style="z-index: 1080; max-height: 260px;"
+                                            @click.stop
+                                        >
+                                            <!-- Search Input -->
+                                            <div class="input-group input-group-sm mb-2">
+                                                <span class="input-group-text bg-transparent border-end-0">
+                                                    <i class="ri-search-line text-muted fs-12"></i>
+                                                </span>
+                                                <input
+                                                    v-model="userSearchQuery"
+                                                    type="text"
+                                                    class="form-control border-start-0 fs-12"
+                                                    placeholder="Ketik nama atau email pengguna..."
+                                                    autofocus
+                                                />
+                                                <button
+                                                    v-if="userSearchQuery"
+                                                    type="button"
+                                                    class="btn btn-sm btn-link text-muted border border-start-0 p-1"
+                                                    @click="userSearchQuery = ''"
+                                                >
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            </div>
+
+                                            <!-- Options List -->
+                                            <div class="d-flex flex-column gap-1 overflow-auto pe-1" style="max-height: 170px;">
+                                                <div
+                                                    v-for="u in filteredAvailableUsers"
+                                                    :key="u.id"
+                                                    class="d-flex align-items-center justify-content-between p-2 rounded-2 cursor-pointer transition-all hover-bg-light"
+                                                    :class="{ 'bg-primary-subtle text-primary': addMemberForm.user_id === u.id }"
+                                                    @click="selectUser(u)"
+                                                >
+                                                    <div class="d-flex align-items-center gap-2 overflow-hidden flex-grow-1">
+                                                        <div
+                                                            class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold fs-11 flex-shrink-0"
+                                                            :class="addMemberForm.user_id === u.id ? 'bg-primary' : 'bg-secondary'"
+                                                            style="width: 26px; height: 26px;"
+                                                        >
+                                                            {{ u.name.charAt(0).toUpperCase() }}
+                                                        </div>
+                                                        <div class="overflow-hidden">
+                                                            <div class="fs-12 fw-semibold text-truncate">{{ u.name }}</div>
+                                                            <div class="fs-10 text-muted text-truncate">{{ u.email }}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="d-flex align-items-center gap-1 flex-shrink-0 ms-2">
+                                                        <span class="badge bg-light text-secondary border fs-10 text-capitalize">
+                                                            {{ u.role }}
+                                                        </span>
+                                                        <i
+                                                            v-if="addMemberForm.user_id === u.id"
+                                                            class="ri-check-line text-primary fw-bold fs-16"
+                                                        ></i>
+                                                    </div>
+                                                </div>
+
+                                                <div v-if="!filteredAvailableUsers.length" class="text-center py-3 text-muted fs-12">
+                                                    Tidak ada pengguna yang cocok.
+                                                </div>
+                                            </div>
+
+                                            <!-- Footer -->
+                                            <div class="border-top pt-2 mt-1 d-flex justify-content-between align-items-center">
+                                                <span class="fs-10 text-muted">{{ filteredAvailableUsers.length }} pengguna tersedia</span>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-xs btn-light rounded-pill px-2 py-0 fs-11 text-muted"
+                                                    @click="isUserDropdownOpen = false"
+                                                >
+                                                    Tutup
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="col-md-3">
                                         <label class="form-label fs-12 fw-semibold">Peran di Workspace</label>
@@ -651,3 +794,18 @@ const getRoleLabel = (role) => {
         </div>
     </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.cursor-pointer {
+    cursor: pointer;
+}
+.hover-bg-light:hover {
+    background-color: var(--bs-light) !important;
+}
+.hover-text-danger:hover {
+    color: var(--bs-danger) !important;
+}
+.shadow-xs {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+</style>
