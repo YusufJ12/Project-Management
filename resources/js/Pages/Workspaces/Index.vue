@@ -447,7 +447,7 @@ const getRoleLabel = (role) => {
 
                     <div class="modal-body p-4">
                         <!-- Form Tambah Anggota Baru ke Workspace (Jika punya akses) -->
-                        <div v-if="selectedWorkspace.can_manage" class="card bg-light border-0 rounded-3 p-3 mb-4">
+                        <div v-if="selectedWorkspace.can_manage" class="card bg-light-subtle border border-secondary-subtle rounded-3 p-3 mb-4">
                             <h6 class="fw-bold fs-13 mb-2 text-primary">
                                 <i class="ri-user-add-line me-1"></i> Tambahkan Anggota Baru ke Workspace
                             </h6>
@@ -460,56 +460,67 @@ const getRoleLabel = (role) => {
                                     <div class="col-md-7 position-relative">
                                         <label class="form-label fs-12 fw-semibold mb-1">Pilih Pengguna Sistem</label>
 
-                                        <!-- Select2 Trigger Box -->
+                                        <!-- Select2-style Box Container (Dark Mode Supported) -->
                                         <div
-                                            class="form-control form-control-sm d-flex align-items-center justify-content-between cursor-pointer bg-white rounded-2"
+                                            class="form-control form-control-sm p-1 d-flex flex-wrap align-items-center gap-1 cursor-pointer bg-light-subtle rounded-2 min-h-38"
                                             :class="{ 'border-primary shadow-xs': isUserDropdownOpen }"
-                                            style="min-height: 33px;"
                                             @click="isUserDropdownOpen = !isUserDropdownOpen"
                                         >
-                                            <div v-if="selectedUserObject" class="d-flex align-items-center gap-2 overflow-hidden flex-grow-1">
+                                            <!-- Selected User Pill -->
+                                            <span
+                                                v-if="selectedUserObject"
+                                                class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 d-flex align-items-center gap-1 fs-11"
+                                                @click.stop
+                                            >
                                                 <span
-                                                    class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold fs-10 flex-shrink-0"
-                                                    style="width: 20px; height: 20px;"
+                                                    class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
+                                                    style="width: 16px; height: 16px; font-size: 9px;"
                                                 >
                                                     {{ selectedUserObject.name.charAt(0).toUpperCase() }}
                                                 </span>
-                                                <span class="fs-12 text-truncate fw-semibold text-body">{{ selectedUserObject.name }}</span>
-                                                <span class="fs-11 text-muted text-truncate">({{ selectedUserObject.email }})</span>
-                                                <span class="badge bg-secondary-subtle text-secondary fs-10 text-capitalize ms-auto me-1">
+                                                <span class="text-truncate fw-semibold" style="max-width: 130px;">{{ selectedUserObject.name }}</span>
+                                                <span class="text-muted fs-10 d-none d-sm-inline">({{ selectedUserObject.email }})</span>
+                                                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle fs-10 text-capitalize ms-1">
                                                     {{ selectedUserObject.role }}
                                                 </span>
-                                            </div>
-                                            <span v-else class="text-muted fs-12">-- Cari & Pilih Pengguna Terdaftar --</span>
-
-                                            <div class="d-flex align-items-center gap-1 text-muted flex-shrink-0 ms-1">
                                                 <i
-                                                    v-if="selectedUserObject"
-                                                    class="ri-close-line cursor-pointer fs-14 hover-text-danger"
+                                                    class="ri-close-line cursor-pointer fs-12 text-muted hover-text-danger"
                                                     title="Batal pilih"
                                                     @click.stop="clearSelectedUser"
                                                 ></i>
-                                                <i :class="isUserDropdownOpen ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'" class="fs-14"></i>
+                                            </span>
+
+                                            <!-- Placeholder when none selected -->
+                                            <span
+                                                v-else
+                                                class="text-muted fs-12 ps-2"
+                                            >
+                                                Pilih Pengguna Terdaftar...
+                                            </span>
+
+                                            <!-- Caret Indicator -->
+                                            <div class="ms-auto pe-2 text-muted">
+                                                <i :class="isUserDropdownOpen ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i>
                                             </div>
                                         </div>
 
-                                        <!-- Select2 Dropdown Menu -->
+                                        <!-- Select2 Dropdown Menu (Dark Mode Supported) -->
                                         <div
                                             v-if="isUserDropdownOpen"
-                                            class="card position-absolute w-100 mt-1 border shadow-lg rounded-3 p-2 bg-body"
+                                            class="card position-absolute w-100 mt-1 border border-secondary-subtle shadow-lg rounded-3 p-2 bg-body"
                                             style="z-index: 1080; max-height: 260px;"
                                             @click.stop
                                         >
                                             <!-- Search Input -->
                                             <div class="input-group input-group-sm mb-2">
-                                                <span class="input-group-text bg-transparent border-end-0">
-                                                    <i class="ri-search-line text-muted fs-12"></i>
+                                                <span class="input-group-text bg-transparent border-end-0 text-muted">
+                                                    <i class="ri-search-line fs-12"></i>
                                                 </span>
                                                 <input
                                                     v-model="userSearchQuery"
                                                     type="text"
                                                     class="form-control border-start-0 fs-12"
-                                                    placeholder="Ketik nama atau email pengguna..."
+                                                    placeholder="Cari nama atau email pengguna..."
                                                     autofocus
                                                 />
                                                 <button
@@ -523,11 +534,11 @@ const getRoleLabel = (role) => {
                                             </div>
 
                                             <!-- Options List -->
-                                            <div class="d-flex flex-column gap-1 overflow-auto pe-1" style="max-height: 170px;">
+                                            <div class="d-flex flex-column gap-1 overflow-auto pe-1" style="max-height: 160px;">
                                                 <div
                                                     v-for="u in filteredAvailableUsers"
                                                     :key="u.id"
-                                                    class="d-flex align-items-center justify-content-between p-2 rounded-2 cursor-pointer transition-all hover-bg-light"
+                                                    class="d-flex align-items-center justify-content-between p-2 rounded-2 cursor-pointer transition-all hover-bg-item"
                                                     :class="{ 'bg-primary-subtle text-primary': addMemberForm.user_id === u.id }"
                                                     @click="selectUser(u)"
                                                 >
@@ -535,22 +546,26 @@ const getRoleLabel = (role) => {
                                                         <div
                                                             class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold fs-11 flex-shrink-0"
                                                             :class="addMemberForm.user_id === u.id ? 'bg-primary' : 'bg-secondary'"
-                                                            style="width: 26px; height: 26px;"
+                                                            style="width: 24px; height: 24px;"
                                                         >
                                                             {{ u.name.charAt(0).toUpperCase() }}
                                                         </div>
                                                         <div class="overflow-hidden">
-                                                            <div class="fs-12 fw-semibold text-truncate">{{ u.name }}</div>
+                                                            <div class="fs-12 fw-semibold text-truncate text-body">{{ u.name }}</div>
                                                             <div class="fs-10 text-muted text-truncate">{{ u.email }}</div>
                                                         </div>
                                                     </div>
                                                     <div class="d-flex align-items-center gap-1 flex-shrink-0 ms-2">
-                                                        <span class="badge bg-light text-secondary border fs-10 text-capitalize">
+                                                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle fs-10 text-capitalize">
                                                             {{ u.role }}
                                                         </span>
                                                         <i
                                                             v-if="addMemberForm.user_id === u.id"
-                                                            class="ri-check-line text-primary fw-bold fs-16"
+                                                            class="ri-checkbox-circle-fill text-primary fs-16"
+                                                        ></i>
+                                                        <i
+                                                            v-else
+                                                            class="ri-checkbox-blank-circle-line text-muted fs-16"
                                                         ></i>
                                                     </div>
                                                 </div>
@@ -561,7 +576,7 @@ const getRoleLabel = (role) => {
                                             </div>
 
                                             <!-- Footer -->
-                                            <div class="border-top pt-2 mt-1 d-flex justify-content-between align-items-center">
+                                            <div class="border-top border-secondary-subtle pt-2 mt-1 d-flex justify-content-between align-items-center">
                                                 <span class="fs-10 text-muted">{{ filteredAvailableUsers.length }} pengguna tersedia</span>
                                                 <button
                                                     type="button"
@@ -606,7 +621,7 @@ const getRoleLabel = (role) => {
 
                         <div class="table-responsive border rounded-3">
                             <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light fs-12 text-uppercase">
+                                <thead class="bg-light-subtle fs-12 text-uppercase border-bottom">
                                     <tr>
                                         <th>Pengguna</th>
                                         <th>Peran di Workspace</th>
@@ -799,13 +814,16 @@ const getRoleLabel = (role) => {
 .cursor-pointer {
     cursor: pointer;
 }
-.hover-bg-light:hover {
-    background-color: var(--bs-light) !important;
+.hover-bg-item:hover {
+    background-color: var(--bs-tertiary-bg) !important;
 }
 .hover-text-danger:hover {
     color: var(--bs-danger) !important;
 }
 .shadow-xs {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.min-h-38 {
+    min-height: 38px;
 }
 </style>
