@@ -33,27 +33,52 @@ jobs:
           npm ci
           npm run build
 
+      - name: Sanitize Deployment Variables
+        run: |
+          CLEAN_HOST=$(echo "${{ secrets.SSH_HOST }}" | awk '{print $1}' | tr -d ' \t\r\n')
+          CLEAN_USER=$(echo "${{ secrets.SSH_USER }}" | awk '{print $1}' | tr -d ' \t\r\n')
+          CLEAN_PORT=$(echo "${{ secrets.SSH_PORT }}" | tr -dc '0-9')
+          CLEAN_TARGET=$(echo "${{ secrets.REMOTE_TARGET }}" | awk '{print $1}' | tr -d ' \t\r\n')
+
+          if [ -z "$CLEAN_PORT" ]; then
+            CLEAN_PORT="64000"
+          fi
+
+          echo "CLEAN_HOST=$CLEAN_HOST" >> $GITHUB_ENV
+          echo "CLEAN_USER=$CLEAN_USER" >> $GITHUB_ENV
+          echo "CLEAN_PORT=$CLEAN_PORT" >> $GITHUB_ENV
+          echo "CLEAN_TARGET=$CLEAN_TARGET" >> $GITHUB_ENV
+
       - name: Deploy via Rsync
         uses: easingthemes/ssh-deploy@v5.1.0
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+          ARGS: "-rlgoDzvc -i --delete"
+          SOURCE: "/"
+          REMOTE_HOST: ${{ env.CLEAN_HOST }}
+          REMOTE_USER: ${{ env.CLEAN_USER }}
+          REMOTE_PORT: ${{ env.CLEAN_PORT }}
+          TARGET: ${{ env.CLEAN_TARGET }}
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/"
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
           ARGS: "-rlgoDzvc -i --delete"
           SOURCE: "/"
-          REMOTE_HOST: ${{ secrets.SSH_HOST }}
-          REMOTE_USER: ${{ secrets.SSH_USER }}
-          REMOTE_PORT: ${{ secrets.SSH_PORT }}
-          TARGET: ${{ secrets.REMOTE_TARGET }}
+          REMOTE_HOST: ${{ env.CLEAN_HOST }}
+          REMOTE_USER: ${{ env.CLEAN_USER }}
+          REMOTE_PORT: ${{ env.CLEAN_PORT }}
+          TARGET: ${{ env.CLEAN_TARGET }}
           EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/"
 
       - name: Run Post-Deployment Commands
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
+          host: ${{ env.CLEAN_HOST }}
+          username: ${{ env.CLEAN_USER }}
           key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT }}
+          port: ${{ env.CLEAN_PORT }}
           script: |
-            cd ${{ secrets.REMOTE_TARGET }}
+            cd ${{ env.CLEAN_TARGET }}
             /opt/alt/php83/usr/bin/php artisan storage:link || true
             /opt/alt/php83/usr/bin/php artisan migrate --force
             /opt/alt/php83/usr/bin/php artisan optimize:clear
