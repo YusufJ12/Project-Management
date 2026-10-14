@@ -105,21 +105,25 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.hub_rounded, size: 64, color: Color(0xFF00AAAD)),
-            SizedBox(height: 16),
-            Text(
+            Image.asset(
+              'assets/images/logo.png',
+              width: 80,
+              height: 80,
+            ),
+            const SizedBox(height: 16),
+            const Text(
               'NexSphere',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: -0.5),
             ),
-            SizedBox(height: 8),
-            Text('Project Management Mobile', style: TextStyle(color: Colors.grey)),
-            SizedBox(height: 24),
-            CircularProgressIndicator(strokeWidth: 2),
+            const SizedBox(height: 8),
+            const Text('Project Management Mobile', style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 24),
+            const CircularProgressIndicator(strokeWidth: 2),
           ],
         ),
       ),
@@ -141,8 +145,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailCtrl = TextEditingController(text: 'admin@nexsphere.test');
-  final _passCtrl = TextEditingController(text: 'admin123');
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -198,7 +202,13 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(Icons.hub_rounded, size: 56, color: Color(0xFF00AAAD)),
+                Center(
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    width: 72,
+                    height: 72,
+                  ),
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'Masuk ke NexSphere',
@@ -386,12 +396,20 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            const Text('NexSphere Workspaces', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            if (_userName != null)
-              Text('Halo, $_userName', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            Image.asset('assets/images/logo.png', width: 28, height: 28),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('NexSphere Workspaces', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  if (_userName != null)
+                    Text('Halo, $_userName', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                ],
+              ),
+            ),
           ],
         ),
         actions: [
