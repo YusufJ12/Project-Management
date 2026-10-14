@@ -14,6 +14,8 @@ class TaskModel {
   final int checklistsCount;
   final int completedChecklistsCount;
 
+  final List<ChecklistModel> checklists;
+
   TaskModel({
     required this.id,
     required this.listId,
@@ -29,6 +31,7 @@ class TaskModel {
     required this.isDone,
     this.checklistsCount = 0,
     this.completedChecklistsCount = 0,
+    this.checklists = const [],
   });
 
   factory TaskModel.fromJson(Map<String, dynamic> json) {
@@ -47,6 +50,10 @@ class TaskModel {
       isDone: json['is_done'] as bool? ?? false,
       checklistsCount: json['checklists_count'] as int? ?? 0,
       completedChecklistsCount: json['completed_checklists_count'] as int? ?? 0,
+      checklists: (json['checklists'] as List<dynamic>?)
+              ?.map((c) => ChecklistModel.fromJson(c as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 
@@ -71,6 +78,27 @@ class TaskModel {
       isDone: isDone,
       checklistsCount: checklistsCount,
       completedChecklistsCount: completedChecklistsCount,
+      checklists: checklists,
+    );
+  }
+}
+
+class ChecklistModel {
+  final int id;
+  final String title;
+  final bool isCompleted;
+
+  ChecklistModel({
+    required this.id,
+    required this.title,
+    required this.isCompleted,
+  });
+
+  factory ChecklistModel.fromJson(Map<String, dynamic> json) {
+    return ChecklistModel(
+      id: json['id'] as int,
+      title: json['title'] as String,
+      isCompleted: json['is_completed'] as bool? ?? false,
     );
   }
 }

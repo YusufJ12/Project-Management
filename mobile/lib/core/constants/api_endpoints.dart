@@ -8,10 +8,12 @@ class ApiEndpoints {
   static const String me = '/auth/me';
   static const String logout = '/auth/logout';
 
-  // Workspaces & Spaces
+  // Workspaces & Spaces CRUD
   static const String workspaces = '/workspaces';
+  static String workspaceDetail(int workspaceId) => '/workspaces/$workspaceId';
   static String workspaceSpaces(int workspaceId) => '/workspaces/$workspaceId/spaces';
   static String spaceDetail(int spaceId) => '/spaces/$spaceId';
+  static String spaceTimeline(int spaceId) => '/spaces/$spaceId/timeline';
 
   // Tasks & Kanban
   static const String tasks = '/tasks';

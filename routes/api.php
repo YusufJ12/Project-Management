@@ -30,12 +30,19 @@ Route::prefix('v1')->group(function () {
         // Dashboard Metrics
         Route::get('/dashboard', [WorkspaceApiController::class, 'dashboard']);
 
-        // Workspaces
+        // Workspaces CRUD
         Route::get('/workspaces', [WorkspaceApiController::class, 'index']);
+        Route::post('/workspaces', [WorkspaceApiController::class, 'store']);
+        Route::put('/workspaces/{workspace}', [WorkspaceApiController::class, 'update']);
+        Route::delete('/workspaces/{workspace}', [WorkspaceApiController::class, 'destroy']);
         Route::get('/workspaces/{workspace}/spaces', [WorkspaceApiController::class, 'spaces']);
+        Route::post('/workspaces/{workspace}/spaces', [SpaceApiController::class, 'store']);
 
-        // Spaces (Projects)
+        // Spaces (Projects) CRUD & Timeline
         Route::get('/spaces/{space}', [SpaceApiController::class, 'show']);
+        Route::put('/spaces/{space}', [SpaceApiController::class, 'update']);
+        Route::delete('/spaces/{space}', [SpaceApiController::class, 'destroy']);
+        Route::get('/spaces/{space}/timeline', [SpaceApiController::class, 'timeline']);
 
         // My Tasks (Assigned to Me)
         Route::get('/my-tasks', [TaskApiController::class, 'myTasks']);

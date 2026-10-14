@@ -68,5 +68,32 @@ class KanbanRepository {
 
     return response.data['data']['is_completed'] as bool? ?? false;
   }
+
+  /// Update task title, description, priority, or due_at
+  Future<TaskModel> updateTask({
+    required int taskId,
+    required String title,
+    String? description,
+    String? priority,
+    String? dueAt,
+  }) async {
+    final response = await _apiClient.dio.put(
+      ApiEndpoints.taskDetail(taskId),
+      data: {
+        'title': title,
+        'description': description,
+        'priority': priority,
+        'due_at': dueAt,
+      },
+    );
+
+    return TaskModel.fromJson(response.data['data'] as Map<String, dynamic>);
+  }
+
+  /// Delete task
+  Future<bool> deleteTask(int taskId) async {
+    final response = await _apiClient.dio.delete(ApiEndpoints.taskDetail(taskId));
+    return response.statusCode == 200;
+  }
 }
 

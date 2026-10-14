@@ -25,6 +25,69 @@ class WorkspaceApiController extends Controller
         ]);
     }
 
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+        ]);
+
+        $user = $request->user();
+
+        $workspace = Workspace::create([
+            'name' => $validated['name'],
+            'slug' => \Illuminate\Support\Str::slug($validated['name']) . '-' . \Illuminate\Support\Str::random(4),
+            'owner_id' => $user->id,
+        ]);
+
+        $workspace->members()->attach($user->id, [
+            'role' => 'owner',
+            'joined_at' => now(),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Workspace berhasil dibuat.',
+            'data' => new WorkspaceResource($workspace),
+        ], 201);
+    }
+
+    public function update(Request $request, Workspace $workspace): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($workspace->owner_id !== $user->id && ! $user->isSuperAdmin()) {
+            return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+        ]);
+
+        $workspace->update(['name' => $validated['name']]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Workspace berhasil diperbarui.',
+            'data' => new WorkspaceResource($workspace),
+        ]);
+    }
+
+    public function destroy(Request $request, Workspace $workspace): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($workspace->owner_id !== $user->id && ! $user->isSuperAdmin()) {
+            return response()->json(['status' => 'error', 'message' => 'Hanya pemilik yang dapat menghapus workspace.'], 403);
+        }
+
+        $workspace->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Workspace berhasil dihapus.',
+        ]);
+    }
+
     public function spaces(Request $request, Workspace $workspace): JsonResponse
     {
         $user = $request->user();

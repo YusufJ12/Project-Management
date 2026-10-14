@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'core/constants/api_endpoints.dart';
 import 'core/network/api_client.dart';
 import 'features/kanban/models/stage_model.dart';
+import 'features/kanban/models/task_model.dart';
 import 'features/kanban/repositories/kanban_repository.dart';
 
 void main() {
@@ -396,10 +397,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   // My Tasks
   List<dynamic> _myTasks = [];
   bool _isMyTasksLoading = false;
+  String _myTasksFilter = 'all'; // 'all', 'active', 'completed'
 
   // Activity Logs
   List<dynamic> _activityLogs = [];
   bool _isLogsLoading = false;
+
+  // Timeline
+  List<dynamic> _timelineTasks = [];
+  bool _isTimelineLoading = false;
+  int? _timelineSpaceId;
 
   @override
   void initState() {
@@ -441,7 +448,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       if (mounted) {
         setState(() {
           _spaces = res.data['data'] as List<dynamic>? ?? [];
+          if (_spaces.isNotEmpty && _timelineSpaceId == null) {
+            _timelineSpaceId = _spaces.first['id'] as int;
+          }
         });
+        if (_activeTab == 'timeline' && _timelineSpaceId != null) {
+          _loadTimeline(_timelineSpaceId!);
+        }
       }
     } catch (_) {}
   }
@@ -488,16 +501,347 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     }
   }
 
+  Future<void> _loadTimeline(int spaceId) async {
+    setState(() => _isTimelineLoading = true);
+    try {
+      final res = await widget.apiClient.dio.get(ApiEndpoints.spaceTimeline(spaceId));
+      if (mounted) {
+        setState(() {
+          _timelineTasks = res.data['data'] as List<dynamic>? ?? [];
+        });
+      }
+    } catch (_) {} finally {
+      if (mounted) setState(() => _isTimelineLoading = false);
+    }
+  }
+
   void _switchTab(String tab) {
     setState(() => _activeTab = tab);
     Navigator.pop(context); // Close Drawer
-    if (tab == 'dashboard' && _dashboardData == null) {
+    if (tab == 'dashboard') {
       _loadDashboard();
-    } else if (tab == 'my_tasks' && _myTasks.isEmpty) {
+    } else if (tab == 'my_tasks') {
       _loadMyTasks();
-    } else if (tab == 'activity_logs' && _activityLogs.isEmpty) {
+    } else if (tab == 'activity_logs') {
       _loadActivityLogs();
+    } else if (tab == 'timeline') {
+      if (_timelineSpaceId != null) {
+        _loadTimeline(_timelineSpaceId!);
+      } else if (_spaces.isNotEmpty) {
+        _timelineSpaceId = _spaces.first['id'] as int;
+        _loadTimeline(_timelineSpaceId!);
+      }
     }
+  }
+
+  // ==========================================
+  // WORKSPACE CRUD DIALOGS
+  // ==========================================
+  void _showCreateWorkspaceDialog() {
+    final nameCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Buat Workspace Baru'),
+        content: TextField(
+          controller: nameCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Nama Workspace',
+            hintText: 'Misal: Tim Digital Marketing',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              try {
+                await widget.apiClient.dio.post(ApiEndpoints.workspaces, data: {'name': name});
+                await _loadInitialData();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Workspace '$name' berhasil dibuat")),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gagal membuat workspace.')),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isLoading = false);
+              }
+            },
+            child: const Text('Buat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditWorkspaceDialog(int id, String currentName) {
+    final nameCtrl = TextEditingController(text: currentName);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ubah Nama Workspace'),
+        content: TextField(
+          controller: nameCtrl,
+          decoration: const InputDecoration(labelText: 'Nama Workspace'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              try {
+                await widget.apiClient.dio.put(ApiEndpoints.workspaceDetail(id), data: {'name': name});
+                await _loadInitialData();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Workspace diubah menjadi '$name'")),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gagal memperbarui workspace.')),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isLoading = false);
+              }
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteWorkspace(int id, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Workspace?'),
+        content: Text("Yakin ingin menghapus workspace '$name'? Seluruh space dan tugas di dalamnya akan dihapus."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              try {
+                await widget.apiClient.dio.delete(ApiEndpoints.workspaceDetail(id));
+                await _loadInitialData();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Workspace '$name' berhasil dihapus")),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gagal menghapus workspace.')),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isLoading = false);
+              }
+            },
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // SPACE CRUD DIALOGS
+  // ==========================================
+  void _showCreateSpaceDialog() {
+    if (_selectedWorkspace == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pilih Workspace terlebih dahulu.')),
+      );
+      return;
+    }
+
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Buat Space Proyek Baru'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Nama Space Proyek *'),
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descCtrl,
+                decoration: const InputDecoration(labelText: 'Deskripsi Singkat'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              try {
+                await widget.apiClient.dio.post(
+                  ApiEndpoints.workspaceSpaces(_selectedWorkspace!['id'] as int),
+                  data: {
+                    'name': name,
+                    'description': descCtrl.text.trim(),
+                  },
+                );
+                await _loadSpacesForWorkspace(_selectedWorkspace!['id'] as int);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Space '$name' berhasil dibuat")),
+                  );
+                }
+              } catch (_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gagal membuat space.')),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isLoading = false);
+              }
+            },
+            child: const Text('Buat Space'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditSpaceDialog(Map<String, dynamic> sp) {
+    final nameCtrl = TextEditingController(text: sp['name'] as String?);
+    final descCtrl = TextEditingController(text: sp['description'] as String? ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ubah Space Proyek'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Nama Space *'),
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descCtrl,
+                decoration: const InputDecoration(labelText: 'Deskripsi Singkat'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              try {
+                await widget.apiClient.dio.put(
+                  ApiEndpoints.spaceDetail(sp['id'] as int),
+                  data: {
+                    'name': name,
+                    'description': descCtrl.text.trim(),
+                  },
+                );
+                await _loadSpacesForWorkspace(_selectedWorkspace!['id'] as int);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Space '$name' berhasil diperbarui")),
+                  );
+                }
+              } catch (_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gagal memperbarui space.')),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isLoading = false);
+              }
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteSpace(int spaceId, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Space?'),
+        content: Text("Yakin ingin menghapus space '$name'? Seluruh task di dalamnya akan dihapus."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              try {
+                await widget.apiClient.dio.delete(ApiEndpoints.spaceDetail(spaceId));
+                await _loadSpacesForWorkspace(_selectedWorkspace!['id'] as int);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Space '$name' berhasil dihapus")),
+                  );
+                }
+              } catch (_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gagal menghapus space.')),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _isLoading = false);
+              }
+            },
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _logout() async {
@@ -532,6 +876,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     switch (_activeTab) {
       case 'dashboard':
         return 'Dashboard Ringkasan';
+      case 'timeline':
+        return 'Timeline Proyek';
       case 'my_tasks':
         return 'Tugas Saya (My Tasks)';
       case 'activity_logs':
@@ -566,6 +912,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             onPressed: () {
               if (_activeTab == 'dashboard') {
                 _loadDashboard();
+              } else if (_activeTab == 'timeline') {
+                if (_timelineSpaceId != null) _loadTimeline(_timelineSpaceId!);
               } else if (_activeTab == 'my_tasks') {
                 _loadMyTasks();
               } else if (_activeTab == 'activity_logs') {
@@ -661,6 +1009,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               onTap: () => _switchTab('spaces'),
             ),
             ListTile(
+              leading: const Icon(Icons.view_timeline_rounded),
+              title: const Text('Timeline Proyek', style: TextStyle(fontWeight: FontWeight.w600)),
+              selected: _activeTab == 'timeline',
+              selectedColor: const Color(0xFF00AAAD),
+              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
+              onTap: () => _switchTab('timeline'),
+            ),
+            ListTile(
               leading: const Icon(Icons.check_box_outlined),
               title: const Text('Tugas Saya (My Tasks)', style: TextStyle(fontWeight: FontWeight.w600)),
               selected: _activeTab == 'my_tasks',
@@ -703,6 +1059,15 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           ],
         ),
       ),
+      floatingActionButton: _activeTab == 'spaces'
+          ? FloatingActionButton.extended(
+              onPressed: _showCreateSpaceDialog,
+              backgroundColor: const Color(0xFF00AAAD),
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Buat Space'),
+            )
+          : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _buildCurrentContent(),
@@ -774,6 +1139,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     switch (_activeTab) {
       case 'dashboard':
         return _buildDashboardView();
+      case 'timeline':
+        return _buildTimelineView();
       case 'my_tasks':
         return _buildMyTasksView();
       case 'activity_logs':
@@ -938,16 +1305,45 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     );
   }
 
-  // 2. SPACES & PROJECTS VIEW
+  // 2. SPACES & PROJECTS VIEW WITH FULL CRUD
   Widget _buildSpacesView() {
     return RefreshIndicator(
       onRefresh: _loadInitialData,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (_workspaces.length > 1) ...[
-            const Text('Pilih Workspace:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-            const SizedBox(height: 8),
+          // Workspace header with CRUD controls
+          Row(
+            children: [
+              const Text('Workspace:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.add_business_rounded, size: 20, color: Color(0xFF00AAAD)),
+                tooltip: 'Buat Workspace Baru',
+                onPressed: _showCreateWorkspaceDialog,
+              ),
+              if (_selectedWorkspace != null) ...[
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 18, color: Colors.grey),
+                  tooltip: 'Ubah Nama Workspace',
+                  onPressed: () => _showEditWorkspaceDialog(
+                    _selectedWorkspace!['id'] as int,
+                    _selectedWorkspace!['name'] as String,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                  tooltip: 'Hapus Workspace',
+                  onPressed: () => _confirmDeleteWorkspace(
+                    _selectedWorkspace!['id'] as int,
+                    _selectedWorkspace!['name'] as String,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (_workspaces.isNotEmpty)
             DropdownButtonFormField<int>(
               initialValue: _selectedWorkspace?['id'] as int?,
               decoration: InputDecoration(
@@ -968,19 +1364,34 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                 }
               },
             ),
-            const SizedBox(height: 20),
-          ],
-          const Text('Daftar Space Proyek:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Daftar Space Proyek:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              TextButton.icon(
+                onPressed: _showCreateSpaceDialog,
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Tambah Space', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
           const SizedBox(height: 10),
           if (_spaces.isEmpty)
             Container(
               padding: const EdgeInsets.all(24),
               alignment: Alignment.center,
-              child: const Column(
+              child: Column(
                 children: [
-                  Icon(Icons.folder_open_rounded, size: 48, color: Colors.grey),
-                  SizedBox(height: 8),
-                  Text('Belum ada Space proyek di workspace ini.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const Icon(Icons.folder_open_rounded, size: 48, color: Colors.grey),
+                  const SizedBox(height: 8),
+                  const Text('Belum ada Space proyek di workspace ini.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _showCreateSpaceDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Buat Space Pertama'),
+                  ),
                 ],
               ),
             )
@@ -993,35 +1404,34 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   side: BorderSide(color: Colors.grey.withAlpha(40)),
                 ),
                 margin: const EdgeInsets.only(bottom: 12),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => KanbanBoardScreen(
-                          spaceId: sp['id'] as int,
-                          spaceName: sp['name'] as String,
-                          kanbanRepo: widget.kanbanRepo,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00AAAD).withAlpha(30),
+                          borderRadius: BorderRadius.circular(10),
                         ),
+                        child: const Icon(Icons.view_kanban_rounded, color: Color(0xFF00AAAD), size: 24),
                       ),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00AAAD).withAlpha(30),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.view_kanban_rounded, color: Color(0xFF00AAAD), size: 24),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => KanbanBoardScreen(
+                                  spaceId: sp['id'] as int,
+                                  spaceName: sp['name'] as String,
+                                  kanbanRepo: widget.kanbanRepo,
+                                ),
+                              ),
+                            );
+                          },
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1039,9 +1449,77 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                             ],
                           ),
                         ),
-                        const Icon(Icons.chevron_right_rounded, color: Colors.grey),
-                      ],
-                    ),
+                      ),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert_rounded, size: 20, color: Colors.grey),
+                        onSelected: (val) {
+                          if (val == 'kanban') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => KanbanBoardScreen(
+                                  spaceId: sp['id'] as int,
+                                  spaceName: sp['name'] as String,
+                                  kanbanRepo: widget.kanbanRepo,
+                                ),
+                              ),
+                            );
+                          } else if (val == 'timeline') {
+                            setState(() {
+                              _timelineSpaceId = sp['id'] as int;
+                              _activeTab = 'timeline';
+                            });
+                            _loadTimeline(sp['id'] as int);
+                          } else if (val == 'edit') {
+                            _showEditSpaceDialog(sp as Map<String, dynamic>);
+                          } else if (val == 'delete') {
+                            _confirmDeleteSpace(sp['id'] as int, sp['name'] as String);
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          const PopupMenuItem(
+                            value: 'kanban',
+                            child: Row(
+                              children: [
+                                Icon(Icons.view_kanban_rounded, size: 18),
+                                SizedBox(width: 8),
+                                Text('Papan Kanban'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'timeline',
+                            child: Row(
+                              children: [
+                                Icon(Icons.view_timeline_rounded, size: 18),
+                                SizedBox(width: 8),
+                                Text('Timeline Proyek'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit_outlined, size: 18),
+                                SizedBox(width: 8),
+                                Text('Ubah Space'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Hapus Space', style: TextStyle(color: Colors.red)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -1051,129 +1529,365 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     );
   }
 
-  // 3. MY TASKS VIEW
+  // 3. TIMELINE VIEW
+  Widget _buildTimelineView() {
+    if (_isTimelineLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      children: [
+        if (_spaces.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              border: Border(bottom: BorderSide(color: Colors.grey.withAlpha(30))),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.folder_rounded, size: 18, color: Color(0xFF00AAAD)),
+                const SizedBox(width: 8),
+                const Text('Space:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DropdownButton<int>(
+                    value: _timelineSpaceId,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: _spaces.map((sp) {
+                      return DropdownMenuItem<int>(
+                        value: sp['id'] as int,
+                        child: Text(sp['name'] as String, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      );
+                    }).toList(),
+                    onChanged: (id) {
+                      if (id != null) {
+                        setState(() => _timelineSpaceId = id);
+                        _loadTimeline(id);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        Expanded(
+          child: _timelineTasks.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.calendar_month_rounded, size: 56, color: Colors.grey),
+                      SizedBox(height: 12),
+                      Text('Belum ada tugas di Timeline ini', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      SizedBox(height: 6),
+                      Text('Buat tugas dengan due date di Papan Kanban untuk melihat timeline.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    if (_timelineSpaceId != null) await _loadTimeline(_timelineSpaceId!);
+                  },
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _timelineTasks.length,
+                    itemBuilder: (ctx, idx) {
+                      final t = _timelineTasks[idx];
+                      final stage = t['stage'] as Map<String, dynamic>? ?? {};
+                      final isDone = stage['is_done'] as bool? ?? false;
+                      final priority = (t['priority'] as String?) ?? 'medium';
+                      final pColor = _priorityColor(priority);
+                      final dueAt = t['due_at'] as String?;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Date pill on left
+                            SizedBox(
+                              width: 80,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    dueAt ?? 'No Date',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDone ? Colors.green : (dueAt == null ? Colors.grey : Colors.indigo),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: (isDone ? Colors.green : Colors.grey).withAlpha(20),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      isDone ? 'Selesai' : 'Aktif',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDone ? Colors.green : Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            // Vertical Timeline line
+                            Column(
+                              children: [
+                                Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: isDone ? Colors.green : const Color(0xFF00AAAD),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                ),
+                                Container(
+                                  width: 2,
+                                  height: 50,
+                                  color: Colors.grey.withAlpha(50),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 10),
+                            // Task Card
+                            Expanded(
+                              child: Card(
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: Colors.grey.withAlpha(35)),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: pColor.withAlpha(25),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              priority.toUpperCase(),
+                                              style: TextStyle(color: pColor, fontSize: 9, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                          Text(
+                                            stage['name'] as String? ?? 'Tahapan',
+                                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        t['title'] as String,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          decoration: isDone ? TextDecoration.lineThrough : null,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  // 4. MY TASKS VIEW WITH FILTER
   Widget _buildMyTasksView() {
     if (_isMyTasksLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_myTasks.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.assignment_turned_in_rounded, size: 56, color: Colors.grey),
-            const SizedBox(height: 12),
-            const Text('Tidak ada tugas untuk Anda', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 6),
-            const Text('Semua tugas telah diselesaikan atau belum ditugaskan.', style: TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _loadMyTasks,
-              icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: const Text('Muat Ulang'),
-            ),
-          ],
-        ),
-      );
-    }
+    final filtered = _myTasks.where((t) {
+      final isDone = t['stage']?['is_done'] as bool? ?? false;
+      if (_myTasksFilter == 'completed') return isDone;
+      if (_myTasksFilter == 'active') return !isDone;
+      return true;
+    }).toList();
 
-    return RefreshIndicator(
-      onRefresh: _loadMyTasks,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _myTasks.length,
-        itemBuilder: (ctx, idx) {
-          final t = _myTasks[idx];
-          final priority = (t['priority'] as String?) ?? 'medium';
-          final pColor = _priorityColor(priority);
-          final stageName = t['stage']?['name'] as String? ?? 'Tahapan';
-
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(color: Colors.grey.withAlpha(35)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: pColor.withAlpha(25),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          priority.toUpperCase(),
-                          style: TextStyle(color: pColor, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withAlpha(25),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          stageName,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    t['title'] as String,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                  if (t['description'] != null && (t['description'] as String).isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      t['description'] as String,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      if (t['due_at'] != null) ...[
-                        const Icon(Icons.calendar_today_outlined, size: 12, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          t['due_at'] as String,
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                        const SizedBox(width: 12),
-                      ],
-                      if (t['checklists_count'] != null && (t['checklists_count'] as int) > 0) ...[
-                        const Icon(Icons.check_box_outlined, size: 13, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${t['completed_checklists_count'] ?? 0}/${t['checklists_count']}',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
+    return Column(
+      children: [
+        // Filter Chips Bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            border: Border(bottom: BorderSide(color: Colors.grey.withAlpha(30))),
+          ),
+          child: Row(
+            children: [
+              ChoiceChip(
+                label: const Text('Semua', style: TextStyle(fontSize: 11)),
+                selected: _myTasksFilter == 'all',
+                onSelected: (_) => setState(() => _myTasksFilter = 'all'),
               ),
-            ),
-          );
-        },
-      ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('Aktif', style: TextStyle(fontSize: 11)),
+                selected: _myTasksFilter == 'active',
+                onSelected: (_) => setState(() => _myTasksFilter = 'active'),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('Selesai', style: TextStyle(fontSize: 11)),
+                selected: _myTasksFilter == 'completed',
+                onSelected: (_) => setState(() => _myTasksFilter = 'completed'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: filtered.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.assignment_turned_in_rounded, size: 56, color: Colors.grey),
+                      const SizedBox(height: 12),
+                      const Text('Tidak ada tugas dalam kategori ini', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _loadMyTasks,
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('Muat Ulang'),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadMyTasks,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: filtered.length,
+                    itemBuilder: (ctx, idx) {
+                      final t = filtered[idx];
+                      final priority = (t['priority'] as String?) ?? 'medium';
+                      final pColor = _priorityColor(priority);
+                      final stageName = t['stage']?['name'] as String? ?? 'Tahapan';
+                      final isDone = t['stage']?['is_done'] as bool? ?? false;
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: BorderSide(color: Colors.grey.withAlpha(35)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: pColor.withAlpha(25),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      priority.toUpperCase(),
+                                      style: TextStyle(color: pColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: (isDone ? Colors.green : Colors.grey).withAlpha(25),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      stageName,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDone ? Colors.green : null,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                t['title'] as String,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  decoration: isDone ? TextDecoration.lineThrough : null,
+                                ),
+                              ),
+                              if (t['description'] != null && (t['description'] as String).isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  t['description'] as String,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  if (t['due_at'] != null) ...[
+                                    const Icon(Icons.calendar_today_outlined, size: 12, color: Colors.grey),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      t['due_at'] as String,
+                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                    ),
+                                    const SizedBox(width: 12),
+                                  ],
+                                  if (t['checklists_count'] != null && (t['checklists_count'] as int) > 0) ...[
+                                    const Icon(Icons.check_box_outlined, size: 13, color: Colors.grey),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${t['completed_checklists_count'] ?? 0}/${t['checklists_count']}',
+                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ),
+      ],
     );
   }
 
-  // 4. ACTIVITY LOGS VIEW
+  // 5. ACTIVITY LOGS VIEW
   Widget _buildActivityLogsView() {
     if (_isLogsLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -1245,7 +1959,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 }
 
 // ==========================================
-// 4. KANBAN BOARD SCREEN
+// 4. KANBAN BOARD SCREEN WITH FULL TASK CRUD
 // ==========================================
 class KanbanBoardScreen extends StatefulWidget {
   final int spaceId;
@@ -1282,7 +1996,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
           _stages = stages;
         });
       }
-    } catch (e) {
+    } catch (_) {
       // Handle error
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -1315,6 +2029,243 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
     }
   }
 
+  void _showCreateTaskDialog({int? preselectedStageId}) {
+    if (_stages.isEmpty) return;
+
+    final titleCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    int selectedStageId = preselectedStageId ?? _stages.first.id;
+    String selectedPriority = 'medium';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Tambah Tugas Baru'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Judul Tugas *'),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(labelText: 'Deskripsi / Detail'),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: selectedStageId,
+                  decoration: const InputDecoration(labelText: 'Tahapan Kolom'),
+                  items: _stages.map((s) {
+                    return DropdownMenuItem<int>(
+                      value: s.id,
+                      child: Text(s.name),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => selectedStageId = val);
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedPriority,
+                  decoration: const InputDecoration(labelText: 'Prioritas'),
+                  items: const [
+                    DropdownMenuItem(value: 'low', child: Text('Low')),
+                    DropdownMenuItem(value: 'medium', child: Text('Medium')),
+                    DropdownMenuItem(value: 'high', child: Text('High')),
+                    DropdownMenuItem(value: 'urgent', child: Text('Urgent')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => selectedPriority = val);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ElevatedButton(
+              onPressed: () async {
+                final title = titleCtrl.text.trim();
+                if (title.isEmpty) return;
+                Navigator.pop(ctx);
+                try {
+                  // Find stage list_id
+                  final stage = _stages.firstWhere((s) => s.id == selectedStageId);
+                  await widget.kanbanRepo.createTask(
+                    listId: stage.listId,
+                    stageId: selectedStageId,
+                    title: title,
+                    description: descCtrl.text.trim(),
+                    priority: selectedPriority,
+                  );
+                  await _fetchStages();
+                } catch (_) {}
+              },
+              child: const Text('Simpan Tugas'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTaskDetailDialog(TaskModel task) {
+    final titleCtrl = TextEditingController(text: task.title);
+    final descCtrl = TextEditingController(text: task.description ?? '');
+    String selectedPriority = task.priority;
+    int selectedStageId = task.stageId;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Expanded(
+                child: Text('Edit Tugas #${task.id}', style: const TextStyle(fontSize: 16)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                tooltip: 'Hapus Tugas',
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  _confirmDeleteTask(task.id);
+                },
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Judul Tugas'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(labelText: 'Deskripsi'),
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: selectedStageId,
+                  decoration: const InputDecoration(labelText: 'Pindahkan Tahapan'),
+                  items: _stages.map((s) {
+                    return DropdownMenuItem<int>(
+                      value: s.id,
+                      child: Text(s.name),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => selectedStageId = val);
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedPriority,
+                  decoration: const InputDecoration(labelText: 'Prioritas'),
+                  items: const [
+                    DropdownMenuItem(value: 'low', child: Text('Low')),
+                    DropdownMenuItem(value: 'medium', child: Text('Medium')),
+                    DropdownMenuItem(value: 'high', child: Text('High')),
+                    DropdownMenuItem(value: 'urgent', child: Text('Urgent')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => selectedPriority = val);
+                  },
+                ),
+                if (task.checklists.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text('Checklists / Subtask:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  ...task.checklists.map((chk) {
+                    return CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: chk.isCompleted,
+                      title: Text(chk.title, style: TextStyle(fontSize: 12, decoration: chk.isCompleted ? TextDecoration.lineThrough : null)),
+                      onChanged: (val) async {
+                        await widget.kanbanRepo.toggleChecklist(task.id, chk.id);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) _fetchStages();
+                      },
+                    );
+                  }),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ElevatedButton(
+              onPressed: () async {
+                final newTitle = titleCtrl.text.trim();
+                if (newTitle.isEmpty) return;
+                Navigator.pop(ctx);
+
+                try {
+                  // If stage changed, move task
+                  if (selectedStageId != task.stageId) {
+                    await widget.kanbanRepo.moveTask(
+                      taskId: task.id,
+                      stageId: selectedStageId,
+                      position: 1,
+                    );
+                  }
+
+                  // Update task details
+                  await widget.kanbanRepo.updateTask(
+                    taskId: task.id,
+                    title: newTitle,
+                    description: descCtrl.text.trim(),
+                    priority: selectedPriority,
+                  );
+
+                  await _fetchStages();
+                } catch (_) {}
+              },
+              child: const Text('Simpan Perubahan'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteTask(int taskId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Tugas?'),
+        content: const Text('Tugas ini akan dihapus secara permanen.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await widget.kanbanRepo.deleteTask(taskId);
+                await _fetchStages();
+              } catch (_) {}
+            },
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1327,6 +2278,13 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
             onPressed: _fetchStages,
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showCreateTaskDialog(),
+        backgroundColor: const Color(0xFF00AAAD),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_task_rounded),
+        label: const Text('Tambah Tugas'),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -1379,6 +2337,14 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
                                 ),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  icon: const Icon(Icons.add_rounded, size: 18),
+                                  tooltip: 'Tambah tugas ke kolom ini',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => _showCreateTaskDialog(preselectedStageId: stage.id),
+                                ),
                               ],
                             ),
                           ),
@@ -1404,60 +2370,66 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                                           borderRadius: BorderRadius.circular(12),
                                           side: BorderSide(color: Colors.grey.withAlpha(30)),
                                         ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(12),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: _priorityColor(task.priority).withAlpha(25),
-                                                      borderRadius: BorderRadius.circular(6),
-                                                    ),
-                                                    child: Text(
-                                                      task.priority.toUpperCase(),
-                                                      style: TextStyle(
-                                                        fontSize: 9,
-                                                        fontWeight: FontWeight.bold,
-                                                        color: _priorityColor(task.priority),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                task.title,
-                                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                              ),
-                                              if (task.dueAt != null || task.checklistsCount > 0) ...[
-                                                const SizedBox(height: 8),
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(12),
+                                          onTap: () => _showTaskDetailDialog(task),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(12),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
                                                 Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                   children: [
-                                                    if (task.checklistsCount > 0) ...[
-                                                      Icon(Icons.check_box_outlined, size: 14, color: Colors.grey.shade600),
-                                                      const SizedBox(width: 4),
-                                                      Text(
-                                                        '${task.completedChecklistsCount}/${task.checklistsCount}',
-                                                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: _priorityColor(task.priority).withAlpha(25),
+                                                        borderRadius: BorderRadius.circular(6),
                                                       ),
-                                                      const SizedBox(width: 10),
-                                                    ],
-                                                    if (task.dueAt != null) ...[
-                                                      Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey.shade600),
-                                                      const SizedBox(width: 4),
-                                                      Text(
-                                                        task.dueAt!,
-                                                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                                      child: Text(
+                                                        task.priority.toUpperCase(),
+                                                        style: TextStyle(
+                                                          fontSize: 9,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: _priorityColor(task.priority),
+                                                        ),
                                                       ),
-                                                    ],
+                                                    ),
+                                                    const Icon(Icons.edit_note_rounded, size: 16, color: Colors.grey),
                                                   ],
                                                 ),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  task.title,
+                                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                                ),
+                                                if (task.dueAt != null || task.checklistsCount > 0) ...[
+                                                  const SizedBox(height: 8),
+                                                  Row(
+                                                    children: [
+                                                      if (task.checklistsCount > 0) ...[
+                                                        Icon(Icons.check_box_outlined, size: 14, color: Colors.grey.shade600),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          '${task.completedChecklistsCount}/${task.checklistsCount}',
+                                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                                        ),
+                                                        const SizedBox(width: 10),
+                                                      ],
+                                                      if (task.dueAt != null) ...[
+                                                        Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey.shade600),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          task.dueAt!,
+                                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                                ],
                                               ],
-                                            ],
+                                            ),
                                           ),
                                         ),
                                       );
