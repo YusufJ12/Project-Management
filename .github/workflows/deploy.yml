@@ -1,4 +1,4 @@
-name: Deploy to Domainesia Shared Hosting
+name: Deploy Laravel to Shared Hosting
 
 on:
   push:
@@ -17,26 +17,25 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, bcmath, zip
+          extensions: mbstring, pdo_mysql, bcmath, zip, intl
           coverage: none
 
       - name: Install Composer Dependencies
-        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-progress
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
 
-      - name: Build Frontend Assets (Vite)
+      - name: Build Frontend Assets
         run: |
           npm ci
           npm run build
 
-      - name: Deploy via Rsync over SSH
+      - name: Deploy via Rsync
         uses: easingthemes/ssh-deploy@v5.1.0
-        with:
+        env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
           ARGS: "-rlgoDzvc -i --delete"
           SOURCE: "/"
@@ -44,7 +43,7 @@ jobs:
           REMOTE_USER: ${{ secrets.SSH_USER }}
           REMOTE_PORT: ${{ secrets.SSH_PORT }}
           TARGET: ${{ secrets.REMOTE_TARGET }}
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/app/, /storage/logs/, /storage/framework/sessions/"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/"
 
       - name: Run Post-Deployment Commands
         uses: appleboy/ssh-action@v1.0.3
@@ -59,4 +58,3 @@ jobs:
             /opt/alt/php83/usr/bin/php artisan migrate --force
             /opt/alt/php83/usr/bin/php artisan optimize:clear
             /opt/alt/php83/usr/bin/php artisan optimize
-
