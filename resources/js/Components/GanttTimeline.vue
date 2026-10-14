@@ -352,16 +352,17 @@ const nextTime = () => {
 
 <style scoped>
 .gantt-container {
-    background-color: var(--bs-body-bg, #0f172a);
+    background-color: var(--bs-card-bg, var(--bs-body-bg));
+    color: var(--bs-body-color);
 }
 
 .gantt-header {
-    background-color: var(--bs-tertiary-bg, #1e293b);
+    background-color: var(--bs-tertiary-bg);
 }
 
 .gantt-left-pane {
     width: 340px;
-    background-color: var(--bs-body-bg, #0f172a);
+    background-color: var(--bs-card-bg, var(--bs-body-bg));
     z-index: 2;
 }
 
@@ -371,11 +372,15 @@ const nextTime = () => {
 
 .gantt-table-header {
     height: 38px;
-    background-color: var(--bs-tertiary-bg, #1e293b);
+    background-color: var(--bs-tertiary-bg);
+}
+
+.gantt-task-item {
+    transition: background-color 0.15s ease;
 }
 
 .gantt-task-item:hover {
-    background-color: var(--bs-tertiary-bg, rgba(255, 255, 255, 0.04));
+    background-color: var(--bs-tertiary-bg);
 }
 
 .status-indicator {
@@ -391,37 +396,37 @@ const nextTime = () => {
 
 .gantt-month-header {
     height: 28px;
-    background-color: var(--bs-tertiary-bg, #1e293b);
+    background-color: var(--bs-tertiary-bg);
 }
 
 .gantt-weeks-header {
     height: 38px;
-    background-color: var(--bs-tertiary-bg, #1e293b);
+    background-color: var(--bs-tertiary-bg);
 }
 
 .current-week-header {
-    background-color: rgba(14, 165, 233, 0.08);
+    background-color: rgba(var(--bs-primary-rgb, 14, 165, 233), 0.12);
 }
 
 .current-week-bg {
-    background-color: rgba(14, 165, 233, 0.03);
+    background-color: rgba(var(--bs-primary-rgb, 14, 165, 233), 0.05);
 }
 
 .today-vertical-line {
     width: 2px;
-    background-color: #0284c7;
+    background-color: var(--bs-primary, #0284c7);
     z-index: 10;
 }
 
 .today-marker-dot {
     width: 8px;
     height: 8px;
-    background-color: #0284c7;
+    background-color: var(--bs-primary, #0284c7);
     border-radius: 50%;
     position: absolute;
     top: -4px;
     left: -3px;
-    box-shadow: 0 0 6px #0284c7;
+    box-shadow: 0 0 6px var(--bs-primary, #0284c7);
 }
 
 .gantt-bar-row {
@@ -429,18 +434,19 @@ const nextTime = () => {
 }
 
 .gantt-bar-row:hover {
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: rgba(var(--bs-body-color-rgb, 0, 0, 0), 0.03);
 }
 
 .gantt-bar {
     height: 24px;
     z-index: 5;
-    transition: transform 0.15s ease, filter 0.15s ease;
+    transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
 }
 
 .gantt-bar:hover {
     transform: translateY(-1px);
-    filter: brightness(1.15);
+    filter: brightness(1.1);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
 }
 
 .pointer-events-none {
@@ -456,6 +462,12 @@ const nextTime = () => {
     background-color: var(--bs-body-bg);
     color: var(--bs-body-color);
     border-color: var(--bs-border-color);
+}
+
+.gantt-input:focus, .gantt-select:focus {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-primary);
 }
 </style>
 
