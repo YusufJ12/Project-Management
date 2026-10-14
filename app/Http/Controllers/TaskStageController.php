@@ -21,6 +21,7 @@ class TaskStageController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'color' => ['nullable', 'string', 'max:20'],
             'is_done' => ['nullable', 'boolean'],
+            'after_stage_id' => ['nullable', 'exists:task_stages,id'],
         ]);
 
         $user = Auth::user();
@@ -41,14 +42,44 @@ class TaskStageController extends Controller
             return back()->with('error', 'Anda tidak memiliki hak akses untuk menambah tahapan di proyek ini.');
         }
 
-        $maxPosition = TaskStage::where('list_id', $list->id)->max('position') ?? 0;
+        if (!empty($validated['after_stage_id'])) {
+            $targetStage = TaskStage::where('list_id', $list->id)->find($validated['after_stage_id']);
+            if ($targetStage) {
+                // Re-sequence existing stages to ensure clean consecutive positions
+                $existingStages = TaskStage::where('list_id', $list->id)->orderBy('position')->orderBy('id')->get();
+                $seq = 1;
+                $targetPos = 1;
+                foreach ($existingStages as $s) {
+                    if ($s->position !== $seq) {
+                        $s->update(['position' => $seq]);
+                    }
+                    if ($s->id == $targetStage->id) {
+                        $targetPos = $seq;
+                    }
+                    $seq++;
+                }
+
+                // Shift all stages after targetPos
+                TaskStage::where('list_id', $list->id)
+                    ->where('position', '>', $targetPos)
+                    ->increment('position');
+
+                $newPosition = $targetPos + 1;
+            } else {
+                $maxPosition = TaskStage::where('list_id', $list->id)->max('position') ?? 0;
+                $newPosition = $maxPosition + 1;
+            }
+        } else {
+            $maxPosition = TaskStage::where('list_id', $list->id)->max('position') ?? 0;
+            $newPosition = $maxPosition + 1;
+        }
 
         $stage = TaskStage::create([
             'list_id' => $list->id,
             'name' => $validated['name'],
             'color' => $validated['color'] ?? '#6366f1',
             'is_done' => $validated['is_done'] ?? false,
-            'position' => $maxPosition + 1,
+            'position' => $newPosition,
         ]);
 
         if ($request->wantsJson()) {
@@ -149,3 +180,4 @@ class TaskStageController extends Controller
         return back()->with('success', "Tahapan status '{$name}' berhasil dihapus.");
     }
 }
+

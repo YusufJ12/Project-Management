@@ -42,6 +42,43 @@ class CustomTaskStageTest extends TestCase
         ]);
     }
 
+    public function test_user_can_insert_stage_after_specific_stage(): void
+    {
+        $owner = User::factory()->create();
+        $workspace = Workspace::create(['name' => 'Agency WS', 'slug' => 'agency-ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+
+        $space = Space::create(['workspace_id' => $workspace->id, 'name' => 'App Space', 'slug' => 'app-space']);
+        $space->members()->attach($owner->id, ['role' => 'manager']);
+
+        $list = TaskList::create(['space_id' => $space->id, 'name' => 'Main List', 'slug' => 'main-list']);
+
+        $stage1 = TaskStage::create(['list_id' => $list->id, 'name' => 'Backlog', 'color' => '#6b7280', 'position' => 1]);
+        $stage2 = TaskStage::create(['list_id' => $list->id, 'name' => 'To Do', 'color' => '#0284c7', 'position' => 2]);
+        $stage3 = TaskStage::create(['list_id' => $list->id, 'name' => 'Done', 'color' => '#22c55e', 'position' => 3]);
+
+        // Insert 'In Progress' after 'To Do' (stage2)
+        $response = $this->actingAs($owner)->postJson(route('stages.store'), [
+            'list_id' => $list->id,
+            'name' => 'In Progress',
+            'color' => '#f59e0b',
+            'after_stage_id' => $stage2->id,
+        ]);
+
+        $response->assertStatus(200);
+
+        // Verify order: Backlog (1), To Do (2), In Progress (3), Done (4)
+        $this->assertEquals(1, $stage1->fresh()->position);
+        $this->assertEquals(2, $stage2->fresh()->position);
+        $this->assertEquals(4, $stage3->fresh()->position);
+
+        $this->assertDatabaseHas('task_stages', [
+            'list_id' => $list->id,
+            'name' => 'In Progress',
+            'position' => 3,
+        ]);
+    }
+
     public function test_user_can_delete_stage_and_tasks_are_migrated(): void
     {
         $owner = User::factory()->create();

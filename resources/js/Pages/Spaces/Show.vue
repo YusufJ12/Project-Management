@@ -138,6 +138,7 @@ const removeSpaceMember = async (member) => {
 // CUSTOM STAGES / STATUS MANAGEMENT
 // ==========================================
 const isAddingStage = ref(false);
+const insertAfterStageId = ref(null);
 const newStageName = ref('');
 const newStageColor = ref('#6366f1');
 const newStageIsDone = ref(false);
@@ -156,15 +157,17 @@ const stageColorPresets = [
     '#14b8a6', // Teal
 ];
 
-const openAddStageForm = () => {
+const openAddStageForm = (afterStageId = null) => {
     newStageName.value = '';
     newStageColor.value = stageColorPresets[Math.floor(Math.random() * stageColorPresets.length)];
     newStageIsDone.value = false;
+    insertAfterStageId.value = afterStageId;
     isAddingStage.value = true;
 };
 
 const cancelAddStage = () => {
     isAddingStage.value = false;
+    insertAfterStageId.value = null;
     newStageName.value = '';
 };
 
@@ -185,6 +188,7 @@ const submitCreateStage = async () => {
                 name: newStageName.value.trim(),
                 color: newStageColor.value,
                 is_done: newStageIsDone.value,
+                after_stage_id: insertAfterStageId.value,
             }),
         });
 
@@ -192,10 +196,22 @@ const submitCreateStage = async () => {
             const data = await response.json();
             if (data.stage) {
                 if (!currentList.value.stages) currentList.value.stages = [];
-                currentList.value.stages.push({
+                const newStageItem = {
                     ...data.stage,
                     tasks: [],
-                });
+                };
+
+                if (insertAfterStageId.value) {
+                    const idx = currentList.value.stages.findIndex((s) => s.id === insertAfterStageId.value);
+                    if (idx !== -1) {
+                        currentList.value.stages.splice(idx + 1, 0, newStageItem);
+                    } else {
+                        currentList.value.stages.push(newStageItem);
+                    }
+                } else {
+                    currentList.value.stages.push(newStageItem);
+                }
+
                 showToast(data.message || 'Tahapan baru berhasil dibuat!', 'success');
                 cancelAddStage();
                 nextTick(() => {
@@ -1094,12 +1110,11 @@ const filteredTasks = computed(() => {
 
             <!-- Kanban Columns Container -->
             <div class="kanban-board-wrapper d-flex gap-3 overflow-auto pb-4" style="min-height: 540px;">
-                <div
-                    v-for="stage in currentList?.stages"
-                    :key="stage.id"
-                    class="kanban-column bg-light-subtle rounded-3 p-3 d-flex flex-column border border-secondary-subtle"
-                    style="width: 295px; min-width: 295px;"
-                >
+                <template v-for="stage in currentList?.stages" :key="stage.id">
+                    <div
+                        class="kanban-column bg-light-subtle rounded-3 p-3 d-flex flex-column border border-secondary-subtle"
+                        style="width: 295px; min-width: 295px;"
+                    >
                     <!-- Stage Header -->
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div class="d-flex align-items-center gap-2">
@@ -1113,8 +1128,8 @@ const filteredTasks = computed(() => {
                             <button
                                 type="button"
                                 class="btn btn-sm btn-light p-1 rounded-circle text-muted"
-                                title="Tambah task ke tahapan ini"
-                                @click="openQuickAdd(stage.id)"
+                                :title="`Tambah tahapan status baru setelah '${stage.name}'`"
+                                @click="openAddStageForm(stage.id)"
                             >
                                 <i class="ri-add-line fs-14"></i>
                             </button>
@@ -1128,6 +1143,16 @@ const filteredTasks = computed(() => {
                                     <i class="ri-more-line fs-13"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end shadow border rounded-3 p-1 fs-12">
+                                    <li>
+                                        <button
+                                            type="button"
+                                            class="dropdown-item py-1 px-2 d-flex align-items-center gap-2"
+                                            @click="openAddStageForm(stage.id)"
+                                        >
+                                            <i class="ri-add-line text-primary"></i> Tambah Tahapan Setelah Ini
+                                        </button>
+                                    </li>
+                                    <li><hr class="dropdown-divider my-1"></li>
                                     <li>
                                         <button
                                             type="button"
@@ -1267,29 +1292,114 @@ const filteredTasks = computed(() => {
                     </div>
                 </div>
 
-                <!-- ADD NEW STAGE / STATUS COLUMN -->
+                <!-- Inline Add Stage Form Column: appears immediately after this stage -->
+                    <div
+                        v-if="isAddingStage && insertAfterStageId === stage.id"
+                        class="card border border-primary shadow-sm rounded-3 p-3 bg-body"
+                        style="width: 295px; min-width: 295px; height: fit-content;"
+                    >
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <h6 class="fw-bold fs-13 mb-0 d-flex align-items-center gap-1 text-primary">
+                                <i class="ri-kanban-view"></i>
+                                <span>Setelah '{{ stage.name }}'</span>
+                            </h6>
+                            <button type="button" class="btn-close fs-10" @click="cancelAddStage"></button>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label fs-11 text-muted fw-semibold mb-1">Nama Tahapan Baru</label>
+                            <input
+                                v-model="newStageName"
+                                type="text"
+                                class="form-control form-control-sm rounded-2 fs-12"
+                                placeholder="Misal: In Testing, QA, Staging..."
+                                @keydown.enter.prevent="submitCreateStage"
+                                autofocus
+                            />
+                        </div>
+
+                        <!-- Pilih Warna Preset -->
+                        <div class="mb-2">
+                            <label class="form-label fs-11 text-muted fw-semibold mb-1">Warna Kolom</label>
+                            <div class="d-flex flex-wrap gap-1 align-items-center">
+                                <span
+                                    v-for="c in stageColorPresets"
+                                    :key="c"
+                                    class="rounded-circle cursor-pointer border border-2"
+                                    :style="{ backgroundColor: c, width: '20px', height: '20px', borderColor: newStageColor === c ? '#000' : 'transparent' }"
+                                    @click="newStageColor = c"
+                                ></span>
+                                <input
+                                    type="color"
+                                    v-model="newStageColor"
+                                    class="form-control form-control-color p-0 border-0 rounded-circle"
+                                    style="width: 20px; height: 20px; cursor: pointer;"
+                                    title="Pilih warna kustom"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Is Done Toggle -->
+                        <div class="form-check form-switch mb-3">
+                            <input
+                                :id="'stageIsDoneAfter_' + stage.id"
+                                v-model="newStageIsDone"
+                                class="form-check-input cursor-pointer"
+                                type="checkbox"
+                            />
+                            <label class="form-check-label fs-11 text-muted cursor-pointer" :for="'stageIsDoneAfter_' + stage.id">
+                                Anggap sebagai status 'Selesai' (Done)
+                            </label>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-1">
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-light py-1 px-3 fs-11 rounded-pill"
+                                @click="cancelAddStage"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-primary py-1 px-3 fs-11 fw-semibold rounded-pill"
+                                :disabled="!newStageName.trim() || isSubmittingStage"
+                                @click="submitCreateStage"
+                            >
+                                <span v-if="isSubmittingStage" class="spinner-border spinner-border-sm me-1"></span>
+                                Simpan Tahapan
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- ADD NEW STAGE / STATUS COLUMN AT THE END -->
                 <div style="width: 295px; min-width: 295px;">
                     <!-- Add Column Trigger Button -->
                     <div
-                        v-if="!isAddingStage"
+                        v-if="!isAddingStage || insertAfterStageId !== null"
                         class="card border border-dashed border-secondary-subtle rounded-3 p-3 text-center cursor-pointer bg-light-subtle hover-shadow transition-all"
                         style="height: fit-content;"
-                        @click="openAddStageForm"
+                        @click="openAddStageForm(null)"
                     >
                         <div class="d-flex align-items-center justify-content-center gap-2 text-primary fw-semibold fs-13 py-1">
                             <i class="ri-add-circle-line fs-16"></i>
-                            <span>Tambah Tahapan Status Baru</span>
+                            <span>Tambah Tahapan di Akhir</span>
                         </div>
                     </div>
 
-                    <!-- Add Column Inline Form -->
+                    <!-- Add Column Inline Form at end -->
                     <div
-                        v-else
+                        v-else-if="isAddingStage && insertAfterStageId === null"
                         class="card border border-primary shadow-sm rounded-3 p-3 bg-body"
+                        style="height: fit-content;"
                     >
-                        <h6 class="fw-bold fs-13 mb-2 d-flex align-items-center gap-1">
-                            <i class="ri-kanban-view text-primary"></i> Tahapan Status Baru
-                        </h6>
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <h6 class="fw-bold fs-13 mb-0 d-flex align-items-center gap-1 text-primary">
+                                <i class="ri-kanban-view"></i> Tahapan Status Baru (Di Akhir)
+                            </h6>
+                            <button type="button" class="btn-close fs-10" @click="cancelAddStage"></button>
+                        </div>
 
                         <div class="mb-2">
                             <label class="form-label fs-11 text-muted fw-semibold mb-1">Nama Tahapan</label>
@@ -1306,7 +1416,7 @@ const filteredTasks = computed(() => {
                         <!-- Pilih Warna Preset -->
                         <div class="mb-2">
                             <label class="form-label fs-11 text-muted fw-semibold mb-1">Warna Kolom</label>
-                            <div class="d-flex flex-wrap gap-1">
+                            <div class="d-flex flex-wrap gap-1 align-items-center">
                                 <span
                                     v-for="c in stageColorPresets"
                                     :key="c"
@@ -1314,18 +1424,25 @@ const filteredTasks = computed(() => {
                                     :style="{ backgroundColor: c, width: '20px', height: '20px', borderColor: newStageColor === c ? '#000' : 'transparent' }"
                                     @click="newStageColor = c"
                                 ></span>
+                                <input
+                                    type="color"
+                                    v-model="newStageColor"
+                                    class="form-control form-control-color p-0 border-0 rounded-circle"
+                                    style="width: 20px; height: 20px; cursor: pointer;"
+                                    title="Pilih warna kustom"
+                                />
                             </div>
                         </div>
 
                         <!-- Is Done Toggle -->
                         <div class="form-check form-switch mb-3">
                             <input
-                                id="stageIsDone"
+                                id="stageIsDoneEnd"
                                 v-model="newStageIsDone"
                                 class="form-check-input cursor-pointer"
                                 type="checkbox"
                             />
-                            <label class="form-check-label fs-11 text-muted cursor-pointer" for="stageIsDone">
+                            <label class="form-check-label fs-11 text-muted cursor-pointer" for="stageIsDoneEnd">
                                 Anggap sebagai status 'Selesai' (Done)
                             </label>
                         </div>
