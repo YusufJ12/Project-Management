@@ -1,9 +1,6 @@
 class ApiEndpoints {
-  // Ganti baseUrl sesuai target environment:
-  // - Android Emulator: http://10.0.2.2:8000/api/v1
-  // - iOS Simulator: http://localhost:8000/api/v1
-  // - Production Shared Hosting: https://nama-domain-anda.com/api/v1
-  static const String baseUrl = 'http://10.0.2.2:8000/api/v1';
+  // Default Base URL langsung mengarah ke server produksi NexSphere
+  static const String baseUrl = 'https://projectmanagement.nexsphere.web.id/api/v1';
 
   // Auth Endpoints
   static const String login = '/auth/login';

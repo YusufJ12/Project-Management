@@ -289,7 +289,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             SizedBox(height: 12),
             Text(
-              'Untuk emulator Android: http://10.0.2.2:8000/api/v1\nUntuk server produksi: https://projectmanagement.nexsphere.web.id/api/v1',
+              'Aplikasi ini terhubung langsung ke server live:\nhttps://projectmanagement.nexsphere.web.id/api/v1',
               style: TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ],
