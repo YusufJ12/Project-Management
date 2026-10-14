@@ -11,6 +11,10 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    workspaceMembers: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const page = usePage();
@@ -62,6 +66,71 @@ const deleteCurrentSpace = async () => {
     });
     if (confirmed) {
         router.delete(`/spaces/${props.space.id}`);
+    }
+};
+
+// Space Member Management in Overview Tab
+const showSpaceMemberModal = ref(false);
+const isSpaceUserDropdownOpen = ref(false);
+const spaceUserSearchQuery = ref('');
+
+const addSpaceMemberForm = useForm({
+    user_ids: [],
+    role: 'member',
+});
+
+const availableWorkspaceUsers = computed(() => {
+    const currentMemberIds = (localSpace.value.members || []).map((m) => m.id);
+    return props.workspaceMembers.filter((u) => !currentMemberIds.includes(u.id));
+});
+
+const filteredAvailableWorkspaceUsers = computed(() => {
+    if (!spaceUserSearchQuery.value.trim()) return availableWorkspaceUsers.value;
+    const q = spaceUserSearchQuery.value.toLowerCase();
+    return availableWorkspaceUsers.value.filter(
+        (u) => u.name.toLowerCase().includes(q) || (u.email && u.email.toLowerCase().includes(q))
+    );
+});
+
+const toggleSelectSpaceUser = (user) => {
+    const idx = addSpaceMemberForm.user_ids.indexOf(user.id);
+    if (idx > -1) {
+        addSpaceMemberForm.user_ids.splice(idx, 1);
+    } else {
+        addSpaceMemberForm.user_ids.push(user.id);
+    }
+};
+
+const selectedSpaceUserObjects = computed(() => {
+    return props.workspaceMembers.filter((u) => addSpaceMemberForm.user_ids.includes(u.id));
+});
+
+const submitAddSpaceMember = () => {
+    if (addSpaceMemberForm.user_ids.length === 0) return;
+
+    addSpaceMemberForm.post(`/spaces/${props.space.id}/members`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showToast('Anggota berhasil ditambahkan ke Space!', 'success');
+            addSpaceMemberForm.user_ids = [];
+            isSpaceUserDropdownOpen.value = false;
+        },
+    });
+};
+
+const removeSpaceMember = async (member) => {
+    const confirmed = await confirmDelete({
+        title: 'Keluarkan dari Space?',
+        text: `Yakin ingin mengeluarkan ${member.name} dari Space "${props.space.name}"? Pengguna tidak akan dapat melihat Space ini lagi.`,
+        confirmButtonText: 'Ya, Keluarkan!',
+    });
+    if (confirmed) {
+        router.delete(`/spaces/${props.space.id}/members/${member.id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                showToast(`${member.name} berhasil dikeluarkan dari Space.`, 'success');
+            },
+        });
     }
 };
 
@@ -1255,20 +1324,146 @@ const filteredTasks = computed(() => {
 
         <!-- TAB 2: OVERVIEW & MEMBERS -->
         <div v-else-if="activeTab === 'overview'" class="card border border-secondary-subtle rounded-3 p-4 shadow-sm">
-            <h5 class="fw-bold mb-3 fs-16">Anggota Tim Space</h5>
-            <div class="row g-3">
-                <div v-for="member in space.members" :key="member.id" class="col-md-4">
-                    <div class="border rounded-3 p-3 d-flex align-items-center gap-3">
-                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fs-16 fw-semibold" style="width: 42px; height: 42px;">
-                            {{ member.name.charAt(0).toUpperCase() }}
-                        </div>
-                        <div>
-                            <h6 class="fw-bold mb-0 fs-14">{{ member.name }}</h6>
-                            <span class="fs-12 text-muted">{{ member.email }}</span>
-                            <div class="badge bg-primary-subtle text-primary rounded-pill mt-1 fs-10 text-capitalize">
-                                {{ member.pivot?.role || 'Member' }}
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                <div>
+                    <h5 class="fw-bold fs-16 mb-0">Anggota Tim Space ({{ localSpace.members?.length || 0 }})</h5>
+                    <p class="text-muted fs-12 mb-0">Hanya anggota yang terdaftar di bawah ini yang dapat melihat Space ini.</p>
+                </div>
+            </div>
+
+            <!-- Form Tambah Anggota ke Space -->
+            <div class="card border border-secondary-subtle rounded-3 p-3 mb-4 bg-light-subtle">
+                <h6 class="fw-bold fs-13 mb-2 d-flex align-items-center gap-1">
+                    <i class="ri-user-add-line text-primary"></i> Tambahkan Anggota Workspace ke Space Ini
+                </h6>
+
+                <div v-if="availableWorkspaceUsers.length > 0">
+                    <form @submit.prevent="submitAddSpaceMember" class="row g-2 align-items-end">
+                        <!-- Select2 User Picker -->
+                        <div class="col-md-7 position-relative">
+                            <label class="form-label fs-12 fw-semibold mb-1">Pilih Anggota</label>
+                            
+                            <div
+                                class="form-control form-control-sm p-1 d-flex flex-wrap align-items-center gap-1 cursor-pointer bg-light-subtle rounded-2 min-h-38"
+                                :class="{ 'border-primary shadow-xs': isSpaceUserDropdownOpen }"
+                                @click="isSpaceUserDropdownOpen = !isSpaceUserDropdownOpen"
+                            >
+                                <span
+                                    v-for="u in selectedSpaceUserObjects"
+                                    :key="u.id"
+                                    class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 d-flex align-items-center gap-1 fs-11"
+                                    @click.stop
+                                >
+                                    {{ u.name }}
+                                    <i class="ri-close-line cursor-pointer" @click="toggleSelectSpaceUser(u)"></i>
+                                </span>
+                                <span v-if="!addSpaceMemberForm.user_ids.length" class="text-muted fs-12 ms-2">
+                                    Klik untuk memilih anggota workspace...
+                                </span>
+                            </div>
+
+                            <!-- Dropdown Menu List -->
+                            <div
+                                v-if="isSpaceUserDropdownOpen"
+                                class="position-absolute start-0 end-0 mt-1 bg-body border border-secondary-subtle rounded-3 shadow-lg p-2 z-3"
+                                style="top: 100%; max-height: 240px; overflow-y: auto;"
+                            >
+                                <div class="input-group input-group-sm mb-2">
+                                    <span class="input-group-text bg-transparent border-end-0">
+                                        <i class="ri-search-line text-muted"></i>
+                                    </span>
+                                    <input
+                                        v-model="spaceUserSearchQuery"
+                                        type="text"
+                                        class="form-control border-start-0 fs-12"
+                                        placeholder="Cari anggota..."
+                                        autofocus
+                                        @click.stop
+                                    />
+                                </div>
+
+                                <div class="d-flex flex-column gap-1">
+                                    <div
+                                        v-for="u in filteredAvailableWorkspaceUsers"
+                                        :key="u.id"
+                                        class="d-flex align-items-center justify-content-between p-2 rounded-2 cursor-pointer transition-all hover-bg-item"
+                                        :class="{ 'bg-primary-subtle text-primary': addSpaceMemberForm.user_ids.includes(u.id) }"
+                                        @click.stop="toggleSelectSpaceUser(u)"
+                                    >
+                                        <div class="d-flex align-items-center gap-2 overflow-hidden">
+                                            <div
+                                                class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold fs-11 flex-shrink-0"
+                                                :class="addSpaceMemberForm.user_ids.includes(u.id) ? 'bg-primary' : 'bg-secondary'"
+                                                style="width: 26px; height: 26px;"
+                                            >
+                                                {{ u.name.charAt(0).toUpperCase() }}
+                                            </div>
+                                            <div class="overflow-hidden">
+                                                <div class="fs-12 fw-semibold text-truncate text-body">{{ u.name }}</div>
+                                                <div class="fs-10 text-muted text-truncate">{{ u.email }}</div>
+                                            </div>
+                                        </div>
+                                        <i
+                                            :class="addSpaceMemberForm.user_ids.includes(u.id) ? 'ri-checkbox-circle-fill text-primary fs-16' : 'ri-checkbox-blank-circle-line text-muted fs-16'"
+                                        ></i>
+                                    </div>
+                                    <div v-if="!filteredAvailableWorkspaceUsers.length" class="text-center py-2 text-muted fs-12">
+                                        Tidak ada anggota yang cocok.
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label fs-12 fw-semibold mb-1">Peran di Space</label>
+                            <select v-model="addSpaceMemberForm.role" class="form-select form-select-sm rounded-2">
+                                <option value="member">Anggota (Member)</option>
+                                <option value="manager">Manajer Space</option>
+                                <option value="viewer">Pengamat (Viewer)</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-2">
+                            <button
+                                type="submit"
+                                class="btn btn-primary btn-sm w-100 fw-semibold rounded-pill"
+                                :disabled="addSpaceMemberForm.processing || !addSpaceMemberForm.user_ids.length"
+                            >
+                                <i class="ri-user-add-line me-1"></i> Tambah
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div v-else class="alert alert-info py-2 px-3 mb-0 fs-12 d-flex align-items-center gap-2">
+                    <i class="ri-information-line fs-16 text-primary"></i>
+                    <span>Semua anggota di workspace ini sudah terdaftar di Space ini.</span>
+                </div>
+            </div>
+
+            <!-- Grid Anggota Terdaftar -->
+            <div class="row g-3">
+                <div v-for="member in localSpace.members" :key="member.id" class="col-md-4">
+                    <div class="border border-secondary-subtle rounded-3 p-3 d-flex align-items-center justify-content-between gap-2 bg-body shadow-2xs">
+                        <div class="d-flex align-items-center gap-3 overflow-hidden">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fs-16 fw-semibold flex-shrink-0" style="width: 42px; height: 42px;">
+                                {{ member.name.charAt(0).toUpperCase() }}
+                            </div>
+                            <div class="overflow-hidden">
+                                <h6 class="fw-bold mb-0 fs-14 text-truncate text-body">{{ member.name }}</h6>
+                                <span class="fs-12 text-muted text-truncate d-block">{{ member.email }}</span>
+                                <div class="badge bg-primary-subtle text-primary rounded-pill mt-1 fs-10 text-capitalize">
+                                    {{ member.pivot?.role || 'Member' }}
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-link text-danger p-1 border-0 flex-shrink-0"
+                            title="Keluarkan dari Space"
+                            @click="removeSpaceMember(member)"
+                        >
+                            <i class="ri-delete-bin-line fs-15"></i>
+                        </button>
                     </div>
                 </div>
             </div>

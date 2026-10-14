@@ -66,6 +66,10 @@ class HandleInertiaRequests extends Middleware
             }
 
             if ($activeWsModel) {
+                $isWsOwnerOrAdmin = $activeWsModel->owner_id === $user->id ||
+                    $user->isSuperAdmin() ||
+                    ($activeWsModel->pivot->role ?? 'member') === 'admin';
+
                 $currentWorkspace = [
                     'id' => $activeWsModel->id,
                     'name' => $activeWsModel->name,
@@ -73,7 +77,12 @@ class HandleInertiaRequests extends Middleware
                     'role' => $activeWsModel->pivot->role ?? 'member',
                     'spaces' => $activeWsModel->spaces()
                         ->whereNull('archived_at')
-                        ->select('id', 'name', 'slug', 'status')
+                        ->when(! $isWsOwnerOrAdmin, function ($query) use ($user) {
+                            $query->whereHas('members', function ($m) use ($user) {
+                                $m->where('users.id', $user->id);
+                            });
+                        })
+                        ->select('spaces.id', 'spaces.name', 'spaces.slug', 'spaces.status')
                         ->get(),
                 ];
             }

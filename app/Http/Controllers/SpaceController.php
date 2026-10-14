@@ -45,9 +45,19 @@ class SpaceController extends Controller
                 ->with('info', 'Silakan buat atau pilih workspace terlebih dahulu.');
         }
 
+        $user = Auth::user();
+        $isWsOwnerOrAdmin = $workspace->owner_id === $user->id ||
+            $user->isSuperAdmin() ||
+            $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists();
+
         $spaces = $workspace->spaces()
             ->whereNull('archived_at')
-            ->with(['members:id,name,email', 'lists.tasks.stage'])
+            ->when(! $isWsOwnerOrAdmin, function ($query) use ($user) {
+                $query->whereHas('members', function ($m) use ($user) {
+                    $m->where('users.id', $user->id);
+                });
+            })
+            ->with(['members:id,name,email,username', 'lists.tasks.stage'])
             ->latest()
             ->get()
             ->map(function ($space) {
@@ -72,9 +82,15 @@ class SpaceController extends Controller
                 ];
             });
 
+        // Load all workspace members for member assignment
+        $workspaceMembers = $workspace->members()
+            ->select('users.id', 'users.name', 'users.email', 'users.username')
+            ->get();
+
         return Inertia::render('Spaces/Index', [
             'workspace' => $workspace,
             'spaces' => $spaces,
+            'workspaceMembers' => $workspaceMembers,
         ]);
     }
 
@@ -111,14 +127,6 @@ class SpaceController extends Controller
             'joined_at' => now(),
         ]);
 
-        // Secara otomatis masukkan seluruh anggota workspace yang ada ke dalam space ini
-        $otherMemberIds = $workspace->members()->where('users.id', '!=', $user->id)->pluck('users.id');
-        foreach ($otherMemberIds as $memberId) {
-            $space->members()->syncWithoutDetaching([
-                $memberId => ['role' => 'member', 'joined_at' => now()],
-            ]);
-        }
-
         // Create default Task List
         $list = TaskList::create([
             'space_id' => $space->id,
@@ -154,16 +162,22 @@ class SpaceController extends Controller
     public function show(Request $request, Space $space): Response|RedirectResponse
     {
         $user = Auth::user();
+        $workspace = $space->workspace;
 
-        // Verifikasi bahwa user adalah anggota workspace dari space ini
-        if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+        // Otorisasi: Harus anggota space (atau workspace owner/admin, atau super admin)
+        $isAuthorized = $user->isSuperAdmin() ||
+            $workspace->owner_id === $user->id ||
+            $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
+            $space->members()->where('users.id', $user->id)->exists();
+
+        if (! $isAuthorized) {
             return redirect()->route('spaces.index')
-                ->with('error', 'Anda tidak memiliki akses ke Space ini.');
+                ->with('error', 'Anda tidak memiliki akses ke Space ini. Hanya anggota yang terdaftar yang dapat melihat.');
         }
 
         $space->load([
             'workspace:id,name,slug',
-            'members:id,name,email',
+            'members:id,name,email,username',
             'lists.stages.tasks.assignees:id,name,email',
             'lists.stages.tasks.checklists.completedBy:id,name,email',
             'lists.stages.tasks.comments.user:id,name,email',
@@ -171,22 +185,33 @@ class SpaceController extends Controller
             'lists.stages.tasks.creator:id,name,email',
         ]);
 
+        $workspaceMembers = $workspace->members()
+            ->select('users.id', 'users.name', 'users.email', 'users.username')
+            ->get();
+
         return Inertia::render('Spaces/Show', [
             'space' => $space,
+            'workspaceMembers' => $workspaceMembers,
         ]);
     }
 
     public function sync(Request $request, Space $space): JsonResponse
     {
         $user = Auth::user();
+        $workspace = $space->workspace;
 
-        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+        $isAuthorized = $user->isSuperAdmin() ||
+            $workspace->owner_id === $user->id ||
+            $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
+            $space->members()->where('users.id', $user->id)->exists();
+
+        if (! $isAuthorized) {
             return response()->json(['error' => 'Akses ditolak.'], 403);
         }
 
         $space->load([
             'workspace:id,name,slug',
-            'members:id,name,email',
+            'members:id,name,email,username',
             'lists.stages.tasks.assignees:id,name,email',
             'lists.stages.tasks.checklists.completedBy:id,name,email',
             'lists.stages.tasks.comments.user:id,name,email',
@@ -197,6 +222,85 @@ class SpaceController extends Controller
         return response()->json([
             'space' => $space,
         ]);
+    }
+
+    public function addMember(Request $request, Space $space): RedirectResponse
+    {
+        $user = Auth::user();
+        $workspace = $space->workspace;
+
+        // Hanya workspace owner, workspace admin, space manager, atau super admin yang bisa menambah anggota
+        $canManage = $user->isSuperAdmin() ||
+            $workspace->owner_id === $user->id ||
+            $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
+            $space->members()->where('users.id', $user->id)->wherePivot('role', 'manager')->exists();
+
+        if (! $canManage) {
+            return back()->with('error', 'Anda tidak memiliki hak akses untuk mengelola anggota Space ini.');
+        }
+
+        $validated = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['exists:users,id'],
+            'role' => ['nullable', 'in:member,manager,viewer'],
+        ]);
+
+        $role = $validated['role'] ?? 'member';
+
+        foreach ($validated['user_ids'] as $userId) {
+            $space->members()->syncWithoutDetaching([
+                $userId => [
+                    'role' => $role,
+                    'joined_at' => now(),
+                ],
+            ]);
+        }
+
+        return back()->with('success', 'Anggota berhasil ditambahkan ke Space ini!');
+    }
+
+    public function updateMemberRole(Request $request, Space $space, User $targetUser): RedirectResponse
+    {
+        $user = Auth::user();
+        $workspace = $space->workspace;
+
+        $canManage = $user->isSuperAdmin() ||
+            $workspace->owner_id === $user->id ||
+            $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
+            $space->members()->where('users.id', $user->id)->wherePivot('role', 'manager')->exists();
+
+        if (! $canManage) {
+            return back()->with('error', 'Anda tidak memiliki hak akses untuk mengubah peran anggota di Space ini.');
+        }
+
+        $validated = $request->validate([
+            'role' => ['required', 'in:member,manager,viewer'],
+        ]);
+
+        $space->members()->updateExistingPivot($targetUser->id, [
+            'role' => $validated['role'],
+        ]);
+
+        return back()->with('success', "Peran {$targetUser->name} di Space ini berhasil diperbarui!");
+    }
+
+    public function removeMember(Request $request, Space $space, User $targetUser): RedirectResponse
+    {
+        $user = Auth::user();
+        $workspace = $space->workspace;
+
+        $canManage = $user->isSuperAdmin() ||
+            $workspace->owner_id === $user->id ||
+            $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
+            $space->members()->where('users.id', $user->id)->wherePivot('role', 'manager')->exists();
+
+        if (! $canManage) {
+            return back()->with('error', 'Anda tidak memiliki hak akses untuk menghapus anggota dari Space ini.');
+        }
+
+        $space->members()->detach($targetUser->id);
+
+        return back()->with('success', "{$targetUser->name} telah dikeluarkan dari Space ini.");
     }
 
     public function update(Request $request, Space $space): RedirectResponse

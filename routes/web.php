@@ -53,6 +53,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/spaces/{space:slug}/sync', [SpaceController::class, 'sync'])->name('spaces.sync');
     Route::put('/spaces/{space}', [SpaceController::class, 'update'])->name('spaces.update');
     Route::delete('/spaces/{space}', [SpaceController::class, 'destroy'])->name('spaces.destroy');
+    Route::post('/spaces/{space}/members', [SpaceController::class, 'addMember'])->name('spaces.members.store');
+    Route::put('/spaces/{space}/members/{targetUser}', [SpaceController::class, 'updateMemberRole'])->name('spaces.members.update');
+    Route::delete('/spaces/{space}/members/{targetUser}', [SpaceController::class, 'removeMember'])->name('spaces.members.destroy');
 
     // Task Engine & Kanban Drag-and-Drop
     Route::post('/tasks', [\App\Http\Controllers\TaskController::class, 'store'])->name('tasks.store');
