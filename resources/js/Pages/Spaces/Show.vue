@@ -134,6 +134,116 @@ const removeSpaceMember = async (member) => {
     }
 };
 
+// ==========================================
+// CUSTOM STAGES / STATUS MANAGEMENT
+// ==========================================
+const isAddingStage = ref(false);
+const newStageName = ref('');
+const newStageColor = ref('#6366f1');
+const newStageIsDone = ref(false);
+const isSubmittingStage = ref(false);
+
+const stageColorPresets = [
+    '#64748b', // Slate
+    '#0284c7', // Sky Blue
+    '#3b82f6', // Blue
+    '#6366f1', // Indigo
+    '#8b5cf6', // Violet
+    '#ec4899', // Pink
+    '#f97316', // Orange
+    '#eab308', // Amber
+    '#22c55e', // Emerald / Green
+    '#14b8a6', // Teal
+];
+
+const openAddStageForm = () => {
+    newStageName.value = '';
+    newStageColor.value = stageColorPresets[Math.floor(Math.random() * stageColorPresets.length)];
+    newStageIsDone.value = false;
+    isAddingStage.value = true;
+};
+
+const cancelAddStage = () => {
+    isAddingStage.value = false;
+    newStageName.value = '';
+};
+
+const submitCreateStage = async () => {
+    if (!newStageName.value.trim() || isSubmittingStage.value || !currentList.value) return;
+
+    isSubmittingStage.value = true;
+    try {
+        const response = await fetch('/stages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': getCsrfToken(),
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({
+                list_id: currentList.value.id,
+                name: newStageName.value.trim(),
+                color: newStageColor.value,
+                is_done: newStageIsDone.value,
+            }),
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.stage) {
+                if (!currentList.value.stages) currentList.value.stages = [];
+                currentList.value.stages.push({
+                    ...data.stage,
+                    tasks: [],
+                });
+                showToast(data.message || 'Tahapan baru berhasil dibuat!', 'success');
+                cancelAddStage();
+                nextTick(() => {
+                    initSortable();
+                });
+            }
+        } else {
+            showToast('Gagal menambahkan tahapan status.', 'error');
+        }
+    } catch (err) {
+        console.error('Error creating stage', err);
+        showToast('Koneksi terganggu saat membuat tahapan.', 'error');
+    } finally {
+        isSubmittingStage.value = false;
+    }
+};
+
+const deleteStage = async (stage) => {
+    const confirmed = await confirmDelete({
+        title: 'Hapus Tahapan Status?',
+        text: `Yakin ingin menghapus tahapan status "${stage.name}"? Tugas di dalamnya akan otomatis dialihkan ke tahapan lain.`,
+        confirmButtonText: 'Ya, Hapus Tahapan!',
+    });
+    if (confirmed) {
+        try {
+            const response = await fetch(`/stages/${stage.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    Accept: 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                if (currentList.value?.stages) {
+                    currentList.value.stages = currentList.value.stages.filter((s) => s.id !== stage.id);
+                }
+                showToast(`Tahapan "${stage.name}" berhasil dihapus.`, 'success');
+                syncSpaceData();
+            } else {
+                showToast('Gagal menghapus tahapan status.', 'error');
+            }
+        } catch (err) {
+            console.error('Error deleting stage', err);
+        }
+    }
+};
+
 // Quick Add Task State
 const activeQuickAddStageId = ref(null);
 const quickTaskTitle = ref('');
@@ -999,14 +1109,37 @@ const filteredTasks = computed(() => {
                                 {{ stage.tasks?.length || 0 }}
                             </span>
                         </div>
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-light-light p-1 rounded-circle text-muted"
-                            title="Tambah task ke tahapan ini"
-                            @click="openQuickAdd(stage.id)"
-                        >
-                            <i class="ri-add-line fs-14"></i>
-                        </button>
+                        <div class="d-flex align-items-center gap-1">
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-light p-1 rounded-circle text-muted"
+                                title="Tambah task ke tahapan ini"
+                                @click="openQuickAdd(stage.id)"
+                            >
+                                <i class="ri-add-line fs-14"></i>
+                            </button>
+                            <div class="dropdown">
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-light p-1 rounded-circle text-muted"
+                                    data-bs-toggle="dropdown"
+                                    title="Opsi Tahapan"
+                                >
+                                    <i class="ri-more-line fs-13"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow border rounded-3 p-1 fs-12">
+                                    <li>
+                                        <button
+                                            type="button"
+                                            class="dropdown-item py-1 px-2 text-danger d-flex align-items-center gap-2"
+                                            @click="deleteStage(stage)"
+                                        >
+                                            <i class="ri-delete-bin-line"></i> Hapus Tahapan
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Quick Add Card Form -->
@@ -1131,6 +1264,90 @@ const filteredTasks = computed(() => {
                         >
                             <i class="ri-add-line me-1"></i> Tambah Task
                         </button>
+                    </div>
+                </div>
+
+                <!-- ADD NEW STAGE / STATUS COLUMN -->
+                <div style="width: 295px; min-width: 295px;">
+                    <!-- Add Column Trigger Button -->
+                    <div
+                        v-if="!isAddingStage"
+                        class="card border border-dashed border-secondary-subtle rounded-3 p-3 text-center cursor-pointer bg-light-subtle hover-shadow transition-all"
+                        style="height: fit-content;"
+                        @click="openAddStageForm"
+                    >
+                        <div class="d-flex align-items-center justify-content-center gap-2 text-primary fw-semibold fs-13 py-1">
+                            <i class="ri-add-circle-line fs-16"></i>
+                            <span>Tambah Tahapan Status Baru</span>
+                        </div>
+                    </div>
+
+                    <!-- Add Column Inline Form -->
+                    <div
+                        v-else
+                        class="card border border-primary shadow-sm rounded-3 p-3 bg-body"
+                    >
+                        <h6 class="fw-bold fs-13 mb-2 d-flex align-items-center gap-1">
+                            <i class="ri-kanban-view text-primary"></i> Tahapan Status Baru
+                        </h6>
+
+                        <div class="mb-2">
+                            <label class="form-label fs-11 text-muted fw-semibold mb-1">Nama Tahapan</label>
+                            <input
+                                v-model="newStageName"
+                                type="text"
+                                class="form-control form-control-sm rounded-2 fs-12"
+                                placeholder="Misal: In Testing, QA, Staging..."
+                                @keydown.enter.prevent="submitCreateStage"
+                                autofocus
+                            />
+                        </div>
+
+                        <!-- Pilih Warna Preset -->
+                        <div class="mb-2">
+                            <label class="form-label fs-11 text-muted fw-semibold mb-1">Warna Kolom</label>
+                            <div class="d-flex flex-wrap gap-1">
+                                <span
+                                    v-for="c in stageColorPresets"
+                                    :key="c"
+                                    class="rounded-circle cursor-pointer border border-2"
+                                    :style="{ backgroundColor: c, width: '20px', height: '20px', borderColor: newStageColor === c ? '#000' : 'transparent' }"
+                                    @click="newStageColor = c"
+                                ></span>
+                            </div>
+                        </div>
+
+                        <!-- Is Done Toggle -->
+                        <div class="form-check form-switch mb-3">
+                            <input
+                                id="stageIsDone"
+                                v-model="newStageIsDone"
+                                class="form-check-input cursor-pointer"
+                                type="checkbox"
+                            />
+                            <label class="form-check-label fs-11 text-muted cursor-pointer" for="stageIsDone">
+                                Anggap sebagai status 'Selesai' (Done)
+                            </label>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-1">
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-light py-1 px-3 fs-11 rounded-pill"
+                                @click="cancelAddStage"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-primary py-1 px-3 fs-11 fw-semibold rounded-pill"
+                                :disabled="!newStageName.trim() || isSubmittingStage"
+                                @click="submitCreateStage"
+                            >
+                                <span v-if="isSubmittingStage" class="spinner-border spinner-border-sm me-1"></span>
+                                Simpan Tahapan
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

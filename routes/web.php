@@ -57,6 +57,11 @@ Route::middleware('auth')->group(function () {
     Route::put('/spaces/{space}/members/{targetUser}', [SpaceController::class, 'updateMemberRole'])->name('spaces.members.update');
     Route::delete('/spaces/{space}/members/{targetUser}', [SpaceController::class, 'removeMember'])->name('spaces.members.destroy');
 
+    // Task Stages (Custom Status Columns)
+    Route::post('/stages', [\App\Http\Controllers\TaskStageController::class, 'store'])->name('stages.store');
+    Route::put('/stages/{stage}', [\App\Http\Controllers\TaskStageController::class, 'update'])->name('stages.update');
+    Route::delete('/stages/{stage}', [\App\Http\Controllers\TaskStageController::class, 'destroy'])->name('stages.destroy');
+
     // Task Engine & Kanban Drag-and-Drop
     Route::post('/tasks', [\App\Http\Controllers\TaskController::class, 'store'])->name('tasks.store');
     Route::get('/tasks/{task}', [\App\Http\Controllers\TaskController::class, 'show'])->name('tasks.show');
