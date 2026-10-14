@@ -17,22 +17,69 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    userWorkspaces: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const showModal = ref(false);
+const isCreateMemberDropdownOpen = ref(false);
+const createMemberSearchQuery = ref('');
 
 const form = useForm({
+    workspace_id: props.workspace?.id || null,
     name: '',
     description: '',
     starts_at: '',
     due_at: '',
+    member_ids: [],
+});
+
+const openCreateSpaceModal = () => {
+    form.reset();
+    form.workspace_id = props.workspace?.id || (props.userWorkspaces?.[0]?.id ?? null);
+    form.member_ids = [];
+    createMemberSearchQuery.value = '';
+    isCreateMemberDropdownOpen.value = false;
+    showModal.value = true;
+};
+
+// Available members for the selected workspace in create modal
+const membersForSelectedWorkspace = computed(() => {
+    if (!form.workspace_id) return props.workspaceMembers;
+    const targetWs = props.userWorkspaces.find((w) => w.id === form.workspace_id);
+    return targetWs?.members || props.workspaceMembers || [];
+});
+
+const filteredCreateSpaceMembers = computed(() => {
+    if (!createMemberSearchQuery.value.trim()) return membersForSelectedWorkspace.value;
+    const q = createMemberSearchQuery.value.toLowerCase();
+    return membersForSelectedWorkspace.value.filter(
+        (u) => u.name.toLowerCase().includes(q) || (u.email && u.email.toLowerCase().includes(q))
+    );
+});
+
+const toggleSelectSpaceCreateMember = (user) => {
+    const idx = form.member_ids.indexOf(user.id);
+    if (idx > -1) {
+        form.member_ids.splice(idx, 1);
+    } else {
+        form.member_ids.push(user.id);
+    }
+};
+
+const selectedSpaceCreateMemberObjects = computed(() => {
+    return membersForSelectedWorkspace.value.filter((u) => form.member_ids.includes(u.id));
 });
 
 const createSpace = () => {
     form.post('/spaces', {
         onSuccess: () => {
             form.reset();
+            form.member_ids = [];
             showModal.value = false;
+            showToast('Space baru berhasil dibuat beserta anggotanya!', 'success');
         },
     });
 };
@@ -106,11 +153,16 @@ const submitAddMember = () => {
         preserveScroll: true,
         onSuccess: () => {
             showToast('Anggota berhasil ditambahkan ke Space!', 'success');
-            // Update local space members
-            const updatedSpace = props.spaces.find((s) => s.id === activeSpace.value.id);
-            if (updatedSpace) {
-                activeSpace.value = JSON.parse(JSON.stringify(updatedSpace));
-            }
+            // Optimistically add to activeSpace.members
+            const newlyAddedUsers = props.workspaceMembers.filter((u) => addMemberForm.user_ids.includes(u.id));
+            newlyAddedUsers.forEach((u) => {
+                if (!activeSpace.value.members.some((m) => m.id === u.id)) {
+                    activeSpace.value.members.push({
+                        ...u,
+                        pivot: { role: addMemberForm.role || 'member' },
+                    });
+                }
+            });
             addMemberForm.user_ids = [];
             isUserDropdownOpen.value = false;
         },
@@ -131,10 +183,7 @@ const updateMemberRole = async (member, newRole) => {
             preserveScroll: true,
             onSuccess: () => {
                 showToast(`Peran ${member.name} berhasil diubah!`, 'success');
-                const updatedSpace = props.spaces.find((s) => s.id === activeSpace.value.id);
-                if (updatedSpace) {
-                    activeSpace.value = JSON.parse(JSON.stringify(updatedSpace));
-                }
+                if (member.pivot) member.pivot.role = newRole;
             },
         });
     }
@@ -151,9 +200,8 @@ const removeMemberFromSpace = async (member) => {
             preserveScroll: true,
             onSuccess: () => {
                 showToast(`${member.name} berhasil dikeluarkan dari Space.`, 'success');
-                const updatedSpace = props.spaces.find((s) => s.id === activeSpace.value.id);
-                if (updatedSpace) {
-                    activeSpace.value = JSON.parse(JSON.stringify(updatedSpace));
+                if (activeSpace.value?.members) {
+                    activeSpace.value.members = activeSpace.value.members.filter((m) => m.id !== member.id);
                 }
             },
         });
@@ -178,7 +226,7 @@ const removeMemberFromSpace = async (member) => {
                         </div>
                         <p class="text-muted fs-13 mb-0">Daftar seluruh ruang proyek dan alur kerja tim dalam workspace aktif.</p>
                     </div>
-                    <button type="button" @click="showModal = true" class="btn btn-primary btn-sm px-3 rounded-pill fw-semibold">
+                    <button type="button" @click="openCreateSpaceModal" class="btn btn-primary btn-sm px-3 rounded-pill fw-semibold">
                         <i class="ri-add-line me-1"></i> Buat Space Baru
                     </button>
                 </div>
@@ -331,6 +379,19 @@ const removeMemberFromSpace = async (member) => {
                     </div>
                     <form @submit.prevent="createSpace">
                         <div class="modal-body p-4">
+                            <!-- Pilihan Workspace Target -->
+                            <div class="mb-3" v-if="userWorkspaces.length > 1">
+                                <label for="ws_select" class="form-label fs-13 fw-semibold">Workspace Tujuan</label>
+                                <select id="ws_select" v-model="form.workspace_id" class="form-select rounded-2 fs-13" required>
+                                    <option v-for="ws in userWorkspaces" :key="ws.id" :value="ws.id">
+                                        {{ ws.name }}
+                                    </option>
+                                </select>
+                                <div class="form-text fs-12 text-muted">
+                                    Space akan dibuat di dalam ruang kerja yang Anda pilih.
+                                </div>
+                            </div>
+
                             <div class="mb-3">
                                 <label for="name" class="form-label fs-13 fw-semibold">Nama Space / Proyek</label>
                                 <input
@@ -345,6 +406,89 @@ const removeMemberFromSpace = async (member) => {
                                 />
                                 <div v-if="form.errors.name" class="text-danger fs-12 mt-1">
                                     {{ form.errors.name }}
+                                </div>
+                            </div>
+
+                            <!-- Pilih Anggota dari Workspace Ini (Select2 Dark/Light Mode) -->
+                            <div class="mb-3 position-relative">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label fs-13 fw-semibold mb-0">
+                                        Pilih Anggota yang Terlibat (Opsional)
+                                    </label>
+                                    <span class="fs-11 text-muted">{{ form.member_ids.length }} dipilih</span>
+                                </div>
+
+                                <div
+                                    class="form-control form-control-sm p-1 d-flex flex-wrap align-items-center gap-1 cursor-pointer bg-light-subtle rounded-2 min-h-38"
+                                    :class="{ 'border-primary shadow-xs': isCreateMemberDropdownOpen }"
+                                    @click="isCreateMemberDropdownOpen = !isCreateMemberDropdownOpen"
+                                >
+                                    <span
+                                        v-for="u in selectedSpaceCreateMemberObjects"
+                                        :key="u.id"
+                                        class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 d-flex align-items-center gap-1 fs-11"
+                                        @click.stop
+                                    >
+                                        {{ u.name }}
+                                        <i class="ri-close-line cursor-pointer" @click="toggleSelectSpaceCreateMember(u)"></i>
+                                    </span>
+                                    <span v-if="!form.member_ids.length" class="text-muted fs-12 ms-2">
+                                        Pilih anggota dari workspace ini...
+                                    </span>
+                                </div>
+
+                                <!-- Dropdown List -->
+                                <div
+                                    v-if="isCreateMemberDropdownOpen"
+                                    class="position-absolute start-0 end-0 mt-1 bg-body border border-secondary-subtle rounded-3 shadow-lg p-2 z-3"
+                                    style="top: 100%; max-height: 220px; overflow-y: auto;"
+                                >
+                                    <div class="input-group input-group-sm mb-2">
+                                        <span class="input-group-text bg-transparent border-end-0">
+                                            <i class="ri-search-line text-muted"></i>
+                                        </span>
+                                        <input
+                                            v-model="createMemberSearchQuery"
+                                            type="text"
+                                            class="form-control border-start-0 fs-12"
+                                            placeholder="Cari anggota workspace..."
+                                            autofocus
+                                            @click.stop
+                                        />
+                                    </div>
+
+                                    <div class="d-flex flex-column gap-1">
+                                        <div
+                                            v-for="u in filteredCreateSpaceMembers"
+                                            :key="u.id"
+                                            class="d-flex align-items-center justify-content-between p-2 rounded-2 cursor-pointer transition-all hover-bg-item"
+                                            :class="{ 'bg-primary-subtle text-primary': form.member_ids.includes(u.id) }"
+                                            @click.stop="toggleSelectSpaceCreateMember(u)"
+                                        >
+                                            <div class="d-flex align-items-center gap-2 overflow-hidden">
+                                                <div
+                                                    class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold fs-11 flex-shrink-0"
+                                                    :class="form.member_ids.includes(u.id) ? 'bg-primary' : 'bg-secondary'"
+                                                    style="width: 26px; height: 26px;"
+                                                >
+                                                    {{ u.name.charAt(0).toUpperCase() }}
+                                                </div>
+                                                <div class="overflow-hidden">
+                                                    <div class="fs-12 fw-semibold text-truncate text-body">{{ u.name }}</div>
+                                                    <div class="fs-10 text-muted text-truncate">{{ u.email }}</div>
+                                                </div>
+                                            </div>
+                                            <i
+                                                :class="form.member_ids.includes(u.id) ? 'ri-checkbox-circle-fill text-primary fs-16' : 'ri-checkbox-blank-circle-line text-muted fs-16'"
+                                            ></i>
+                                        </div>
+                                        <div v-if="!filteredCreateSpaceMembers.length" class="text-center py-2 text-muted fs-12">
+                                            Tidak ada anggota yang cocok.
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-text fs-12 text-muted mt-1">
+                                    Hanya anggota dari workspace ini yang akan memiliki akses ke Space yang Anda buat.
                                 </div>
                             </div>
 

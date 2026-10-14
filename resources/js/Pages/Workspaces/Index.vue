@@ -20,16 +20,54 @@ const currentUser = page.props.auth?.user || {};
 
 // Create Workspace Modal
 const showCreateModal = ref(false);
+const isCreateUserDropdownOpen = ref(false);
+const createUserSearchQuery = ref('');
+
 const createForm = useForm({
     name: '',
+    member_ids: [],
+});
+
+const openCreateWorkspaceModal = () => {
+    createForm.reset();
+    createForm.member_ids = [];
+    createUserSearchQuery.value = '';
+    isCreateUserDropdownOpen.value = false;
+    showCreateModal.value = true;
+};
+
+const availableSystemUsersForCreate = computed(() => {
+    return (props.system_users || []).filter((u) => u.id !== currentUser.id);
+});
+
+const filteredCreateUsers = computed(() => {
+    if (!createUserSearchQuery.value.trim()) return availableSystemUsersForCreate.value;
+    const q = createUserSearchQuery.value.toLowerCase();
+    return availableSystemUsersForCreate.value.filter(
+        (u) => u.name.toLowerCase().includes(q) || (u.email && u.email.toLowerCase().includes(q))
+    );
+});
+
+const toggleSelectCreateUser = (user) => {
+    const idx = createForm.member_ids.indexOf(user.id);
+    if (idx > -1) {
+        createForm.member_ids.splice(idx, 1);
+    } else {
+        createForm.member_ids.push(user.id);
+    }
+};
+
+const selectedCreateUserObjects = computed(() => {
+    return (props.system_users || []).filter((u) => createForm.member_ids.includes(u.id));
 });
 
 const submitCreateWorkspace = () => {
     createForm.post('/workspaces', {
         onSuccess: () => {
             createForm.reset();
+            createForm.member_ids = [];
             showCreateModal.value = false;
-            showToast('Workspace baru berhasil dibuat!', 'success');
+            showToast('Workspace baru berhasil dibuat beserta anggotanya!', 'success');
         },
     });
 };
@@ -239,7 +277,7 @@ const getRoleLabel = (role) => {
                     </div>
                     <button
                         type="button"
-                        @click="showCreateModal = true"
+                        @click="openCreateWorkspaceModal"
                         class="btn btn-primary btn-sm px-3 rounded-pill fw-semibold shadow-sm"
                     >
                         <i class="ri-add-line me-1"></i> Buat Workspace Baru
@@ -753,9 +791,90 @@ const getRoleLabel = (role) => {
                                 <div v-if="createForm.errors.name" class="text-danger fs-12 mt-1">
                                     {{ createForm.errors.name }}
                                 </div>
-                                <div class="form-text fs-12 text-muted">
-                                    Slug URL unik akan dibuat otomatis untuk ruang kerja ini. Anda dapat mengundang anggota setelahnya.
+                            </div>
+
+                            <!-- Pilih Anggota Awal (Select2 Style Multi-Select Dark/Light Mode) -->
+                            <div class="mb-3 position-relative">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label fs-13 fw-semibold mb-0">
+                                        Tambahkan Anggota Awal (Opsional)
+                                    </label>
+                                    <span class="fs-11 text-muted">{{ createForm.member_ids.length }} dipilih</span>
                                 </div>
+
+                                <div
+                                    class="form-control form-control-sm p-1 d-flex flex-wrap align-items-center gap-1 cursor-pointer bg-light-subtle rounded-2 min-h-38"
+                                    :class="{ 'border-primary shadow-xs': isCreateUserDropdownOpen }"
+                                    @click="isCreateUserDropdownOpen = !isCreateUserDropdownOpen"
+                                >
+                                    <span
+                                        v-for="u in selectedCreateUserObjects"
+                                        :key="u.id"
+                                        class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 d-flex align-items-center gap-1 fs-11"
+                                        @click.stop
+                                    >
+                                        {{ u.name }}
+                                        <i class="ri-close-line cursor-pointer" @click="toggleSelectCreateUser(u)"></i>
+                                    </span>
+                                    <span v-if="!createForm.member_ids.length" class="text-muted fs-12 ms-2">
+                                        Klik untuk memilih pengguna sistem...
+                                    </span>
+                                </div>
+
+                                <!-- Dropdown List -->
+                                <div
+                                    v-if="isCreateUserDropdownOpen"
+                                    class="position-absolute start-0 end-0 mt-1 bg-body border border-secondary-subtle rounded-3 shadow-lg p-2 z-3"
+                                    style="top: 100%; max-height: 220px; overflow-y: auto;"
+                                >
+                                    <div class="input-group input-group-sm mb-2">
+                                        <span class="input-group-text bg-transparent border-end-0">
+                                            <i class="ri-search-line text-muted"></i>
+                                        </span>
+                                        <input
+                                            v-model="createUserSearchQuery"
+                                            type="text"
+                                            class="form-control border-start-0 fs-12"
+                                            placeholder="Cari nama atau email..."
+                                            autofocus
+                                            @click.stop
+                                        />
+                                    </div>
+
+                                    <div class="d-flex flex-column gap-1">
+                                        <div
+                                            v-for="u in filteredCreateUsers"
+                                            :key="u.id"
+                                            class="d-flex align-items-center justify-content-between p-2 rounded-2 cursor-pointer transition-all hover-bg-item"
+                                            :class="{ 'bg-primary-subtle text-primary': createForm.member_ids.includes(u.id) }"
+                                            @click.stop="toggleSelectCreateUser(u)"
+                                        >
+                                            <div class="d-flex align-items-center gap-2 overflow-hidden">
+                                                <div
+                                                    class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold fs-11 flex-shrink-0"
+                                                    :class="createForm.member_ids.includes(u.id) ? 'bg-primary' : 'bg-secondary'"
+                                                    style="width: 26px; height: 26px;"
+                                                >
+                                                    {{ u.name.charAt(0).toUpperCase() }}
+                                                </div>
+                                                <div class="overflow-hidden">
+                                                    <div class="fs-12 fw-semibold text-truncate text-body">{{ u.name }}</div>
+                                                    <div class="fs-10 text-muted text-truncate">{{ u.email }}</div>
+                                                </div>
+                                            </div>
+                                            <i
+                                                :class="createForm.member_ids.includes(u.id) ? 'ri-checkbox-circle-fill text-primary fs-16' : 'ri-checkbox-blank-circle-line text-muted fs-16'"
+                                            ></i>
+                                        </div>
+                                        <div v-if="!filteredCreateUsers.length" class="text-center py-2 text-muted fs-12">
+                                            Tidak ada pengguna yang cocok.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-text fs-12 text-muted">
+                                Anggota yang dipilih akan otomatis tergabung ke dalam Workspace baru ini.
                             </div>
                         </div>
                         <div class="modal-footer border-top py-2 px-4">

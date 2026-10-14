@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Space;
 use App\Models\TaskList;
 use App\Models\TaskStage;
+use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -87,29 +88,43 @@ class SpaceController extends Controller
             ->select('users.id', 'users.name', 'users.email', 'users.username')
             ->get();
 
+        // Load all accessible workspaces of current user so they can choose workspace when creating space
+        $userWorkspaces = ($user->isSuperAdmin() ? Workspace::query() : $user->workspaces())
+            ->with(['members:id,name,email,username'])
+            ->select('workspaces.id', 'workspaces.name', 'workspaces.slug')
+            ->get();
+
         return Inertia::render('Spaces/Index', [
             'workspace' => $workspace,
             'spaces' => $spaces,
             'workspaceMembers' => $workspaceMembers,
+            'userWorkspaces' => $userWorkspaces,
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $workspace = $this->getActiveWorkspace($request);
-
-        if (! $workspace) {
-            return back()->with('error', 'Tidak ada workspace aktif.');
-        }
-
         $validated = $request->validate([
+            'workspace_id' => ['nullable', 'exists:workspaces,id'],
             'name' => ['required', 'string', 'max:150'],
             'description' => ['nullable', 'string'],
             'starts_at' => ['nullable', 'date'],
             'due_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
+            'member_ids' => ['nullable', 'array'],
+            'member_ids.*' => ['exists:users,id'],
         ]);
 
         $user = Auth::user();
+
+        // Gunakan workspace_id yang dipilih atau workspace aktif
+        $targetWorkspaceId = $validated['workspace_id'] ?? $request->session()->get('active_workspace_id');
+        $workspace = $targetWorkspaceId
+            ? ($user->isSuperAdmin() ? Workspace::find($targetWorkspaceId) : $user->workspaces()->where('workspaces.id', $targetWorkspaceId)->first())
+            : $this->getActiveWorkspace($request);
+
+        if (! $workspace) {
+            return back()->with('error', 'Silakan pilih Workspace yang valid.');
+        }
 
         $space = Space::create([
             'workspace_id' => $workspace->id,
@@ -126,6 +141,21 @@ class SpaceController extends Controller
             'role' => 'manager',
             'joined_at' => now(),
         ]);
+
+        // Masukkan hanya anggota yang dipilih oleh pembuat space (yang valid merupakan anggota workspace tersebut)
+        if (! empty($validated['member_ids'])) {
+            $validMemberIds = $workspace->members()->whereIn('users.id', $validated['member_ids'])->pluck('users.id');
+            foreach ($validMemberIds as $memberId) {
+                if ((int) $memberId !== (int) $user->id) {
+                    $space->members()->syncWithoutDetaching([
+                        $memberId => ['role' => 'member', 'joined_at' => now()],
+                    ]);
+                }
+            }
+        }
+
+        // Set workspace aktif ke workspace pilihan ini
+        $request->session()->put('active_workspace_id', $workspace->id);
 
         // Create default Task List
         $list = TaskList::create([

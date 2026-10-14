@@ -79,6 +79,8 @@ class WorkspaceController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:100'],
+            'member_ids' => ['nullable', 'array'],
+            'member_ids.*' => ['exists:users,id'],
         ]);
 
         $user = Auth::user();
@@ -93,6 +95,17 @@ class WorkspaceController extends Controller
             'role' => 'owner',
             'joined_at' => now(),
         ]);
+
+        if (! empty($validated['member_ids'])) {
+            foreach ($validated['member_ids'] as $memberId) {
+                if ((int) $memberId !== (int) $user->id) {
+                    $workspace->members()->attach($memberId, [
+                        'role' => 'member',
+                        'joined_at' => now(),
+                    ]);
+                }
+            }
+        }
 
         $request->session()->put('active_workspace_id', $workspace->id);
 
