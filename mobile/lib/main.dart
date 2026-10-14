@@ -151,9 +151,14 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _errorMessage;
 
   Future<void> _login() async {
-    final email = _emailCtrl.text.trim();
+    final inputVal = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
-    if (email.isEmpty || pass.isEmpty) return;
+    if (inputVal.isEmpty || pass.isEmpty) {
+      setState(() {
+        _errorMessage = 'Harap isi email/username dan kata sandi.';
+      });
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -163,7 +168,12 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final res = await widget.apiClient.dio.post(
         ApiEndpoints.login,
-        data: {'email': email, 'password': pass},
+        data: {
+          'login': inputVal,
+          'email': inputVal,
+          'username': inputVal,
+          'password': pass,
+        },
       );
 
       final token = res.data['token'] as String;
@@ -180,12 +190,27 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } on DioException catch (e) {
+      String msg = 'Gagal login. Periksa email/username & kata sandi.';
+      if (e.response != null) {
+        final data = e.response?.data;
+        if (data is Map<String, dynamic> && data['message'] != null) {
+          msg = data['message'].toString();
+        } else if (data is String && data.contains('bot-protection')) {
+          msg = 'Server menolak request (Imunify360 Bot-Protection). Coba ubah server URL ke IP lokal atau whitelist IP di hosting.';
+        } else if (e.response?.statusCode == 403) {
+          msg = 'Akses API diblokir oleh firewall server (403 Forbidden).';
+        } else if (e.response?.statusCode == 404) {
+          msg = 'Endpoint login tidak ditemukan di server (404 Not Found).';
+        }
+      } else {
+        msg = 'Koneksi gagal: ${e.message ?? e.type.name}';
+      }
       setState(() {
-        _errorMessage = e.response?.data?['message'] ?? 'Gagal login. Periksa email & kata sandi.';
+        _errorMessage = msg;
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Terjadi kesalahan koneksi server.';
+        _errorMessage = 'Terjadi kesalahan: $e';
       });
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -237,7 +262,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    labelText: 'Email / Username',
+                    labelText: 'Email atau Username',
                     prefixIcon: const Icon(Icons.alternate_email_rounded, size: 20),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
@@ -280,32 +305,61 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showServerSettingsDialog(BuildContext context) {
+    final serverCtrl = TextEditingController(text: widget.apiClient.dio.options.baseUrl);
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Alamat Server API'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Base URL API saat ini:',
+            const Text(
+              'Ubah Base URL API jika diperlukan:',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
-            SizedBox(height: 6),
-            SelectableText(
-              ApiEndpoints.baseUrl,
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            const SizedBox(height: 8),
+            TextField(
+              controller: serverCtrl,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 12),
             ),
-            SizedBox(height: 12),
-            Text(
-              'Aplikasi ini terhubung langsung ke server live:\nhttps://projectmanagement.nexsphere.web.id/api/v1',
+            const SizedBox(height: 12),
+            const Text(
+              'Preset Server:\n- Live: https://projectmanagement.nexsphere.web.id/api/v1\n- Emulator Android: http://10.0.2.2:8000/api/v1',
               style: TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tutup')),
+          TextButton(
+            onPressed: () {
+              widget.apiClient.setBaseUrl('https://projectmanagement.nexsphere.web.id/api/v1');
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Server di-reset ke Live Produksi')),
+              );
+            },
+            child: const Text('Reset Live'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newUrl = serverCtrl.text.trim();
+              if (newUrl.isNotEmpty) {
+                widget.apiClient.setBaseUrl(newUrl);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Server diubah ke: $newUrl')),
+                );
+              }
+            },
+            child: const Text('Simpan'),
+          ),
         ],
       ),
     );

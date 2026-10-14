@@ -16,6 +16,7 @@ class ApiClient {
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36 NexSphereMobile',
         },
       ),
     );
@@ -40,6 +41,10 @@ class ApiClient {
   }
 
   Dio get dio => _dio;
+
+  void setBaseUrl(String newUrl) {
+    _dio.options.baseUrl = newUrl;
+  }
 
   Future<void> saveToken(String token) async {
     await _storage.write(key: tokenKey, value: token);

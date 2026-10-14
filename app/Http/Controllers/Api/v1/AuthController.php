@@ -16,17 +16,29 @@ class AuthController extends Controller
 {
     public function login(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string'],
-        ]);
+        $loginValue = trim((string) ($request->input('login') ?? $request->input('email') ?? $request->input('username')));
+        $password = (string) $request->input('password');
 
-        $user = User::where('email', $validated['email'])->first();
-
-        if (! $user || ! Hash::check($validated['password'], $user->password)) {
+        if (empty($loginValue) || empty($password)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Kredensial login tidak cocok.',
+                'message' => 'Email atau Username dan kata sandi wajib diisi.',
+            ], 422);
+        }
+
+        $field = filter_var($loginValue, FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
+
+        $user = User::where($field, $loginValue)->first();
+
+        // Fallback: jika tidak ditemukan berdasarkan field utama, cari di kolom alternatif
+        if (! $user) {
+            $user = User::where('email', $loginValue)->orWhere('username', $loginValue)->first();
+        }
+
+        if (! $user || ! Hash::check($password, $user->password)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Email/Username atau kata sandi tidak cocok.',
             ], 422);
         }
 

@@ -101,6 +101,23 @@ class PhaseSevenMobileApiTest extends TestCase
             ]);
     }
 
+    public function test_user_can_login_via_username(): void
+    {
+        $this->user->update(['username' => 'dianadev']);
+
+        $response = $this->postJson('/api/v1/auth/login', [
+            'login' => 'dianadev',
+            'password' => 'password123',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('status', 'success')
+            ->assertJsonStructure([
+                'token',
+                'user' => ['id', 'name', 'email'],
+            ]);
+    }
+
     public function test_user_can_register_via_api(): void
     {
         $response = $this->postJson('/api/v1/auth/register', [
