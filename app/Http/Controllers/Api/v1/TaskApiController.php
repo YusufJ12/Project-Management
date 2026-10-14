@@ -329,5 +329,25 @@ class TaskApiController extends Controller
             'data' => new TaskCommentResource($comment),
         ], 201);
     }
+
+    public function myTasks(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $tasks = Task::query()
+            ->where(function ($query) use ($user) {
+                $query->whereHas('assignees', fn ($q) => $q->where('users.id', $user->id))
+                    ->orWhere('created_by', $user->id);
+            })
+            ->with(['stage', 'list.space.workspace', 'assignees', 'checklists'])
+            ->latest()
+            ->take(50)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => TaskResource::collection($tasks),
+        ]);
+    }
 }
 

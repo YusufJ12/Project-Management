@@ -27,12 +27,18 @@ Route::prefix('v1')->group(function () {
             Route::post('/logout', [AuthController::class, 'logout']);
         });
 
+        // Dashboard Metrics
+        Route::get('/dashboard', [WorkspaceApiController::class, 'dashboard']);
+
         // Workspaces
         Route::get('/workspaces', [WorkspaceApiController::class, 'index']);
         Route::get('/workspaces/{workspace}/spaces', [WorkspaceApiController::class, 'spaces']);
 
         // Spaces (Projects)
         Route::get('/spaces/{space}', [SpaceApiController::class, 'show']);
+
+        // My Tasks (Assigned to Me)
+        Route::get('/my-tasks', [TaskApiController::class, 'myTasks']);
 
         // Tasks & Kanban Board
         Route::post('/tasks', [TaskApiController::class, 'store']);
@@ -47,5 +53,8 @@ Route::prefix('v1')->group(function () {
 
         // Comments
         Route::post('/tasks/{task}/comments', [TaskApiController::class, 'addComment']);
+
+        // Activity Logs
+        Route::get('/activity-logs', [WorkspaceApiController::class, 'activityLogs']);
     });
 });

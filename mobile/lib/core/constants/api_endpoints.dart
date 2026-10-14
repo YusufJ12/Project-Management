@@ -15,11 +15,16 @@ class ApiEndpoints {
 
   // Tasks & Kanban
   static const String tasks = '/tasks';
+  static const String myTasks = '/my-tasks';
   static String taskDetail(int taskId) => '/tasks/$taskId';
   static String moveTask(int taskId) => '/tasks/$taskId/move';
   static String taskChecklists(int taskId) => '/tasks/$taskId/checklists';
   static String toggleChecklist(int taskId, int checklistId) =>
       '/tasks/$taskId/checklists/$checklistId/toggle';
   static String taskComments(int taskId) => '/tasks/$taskId/comments';
+
+  // Analytics & Collaboration
+  static const String dashboard = '/dashboard';
+  static const String activityLogs = '/activity-logs';
 }
 

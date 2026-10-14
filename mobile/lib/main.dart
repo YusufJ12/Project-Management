@@ -381,22 +381,38 @@ class WorkspaceScreen extends StatefulWidget {
 
 class _WorkspaceScreenState extends State<WorkspaceScreen> {
   bool _isLoading = true;
+  String _activeTab = 'spaces'; // 'dashboard', 'spaces', 'my_tasks', 'activity_logs'
+
   List<dynamic> _workspaces = [];
   Map<String, dynamic>? _selectedWorkspace;
   List<dynamic> _spaces = [];
   String? _userName;
+  String? _userEmail;
+
+  // Dashboard Metrics
+  Map<String, dynamic>? _dashboardData;
+  bool _isDashboardLoading = false;
+
+  // My Tasks
+  List<dynamic> _myTasks = [];
+  bool _isMyTasksLoading = false;
+
+  // Activity Logs
+  List<dynamic> _activityLogs = [];
+  bool _isLogsLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadWorkspaces();
+    _loadInitialData();
   }
 
-  Future<void> _loadWorkspaces() async {
+  Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
       final meRes = await widget.apiClient.dio.get(ApiEndpoints.me);
       _userName = meRes.data['user']?['name'];
+      _userEmail = meRes.data['user']?['email'];
 
       final wsRes = await widget.apiClient.dio.get(ApiEndpoints.workspaces);
       final wsList = wsRes.data['data'] as List<dynamic>? ?? [];
@@ -412,8 +428,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           await _loadSpacesForWorkspace(_selectedWorkspace!['id'] as int);
         }
       }
-    } catch (e) {
-      // Handle error
+    } catch (_) {
+      // Handle error gracefully
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -427,8 +443,60 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           _spaces = res.data['data'] as List<dynamic>? ?? [];
         });
       }
-    } catch (e) {
-      // Handle error
+    } catch (_) {}
+  }
+
+  Future<void> _loadDashboard() async {
+    setState(() => _isDashboardLoading = true);
+    try {
+      final res = await widget.apiClient.dio.get(ApiEndpoints.dashboard);
+      if (mounted) {
+        setState(() {
+          _dashboardData = res.data['data'] as Map<String, dynamic>?;
+        });
+      }
+    } catch (_) {} finally {
+      if (mounted) setState(() => _isDashboardLoading = false);
+    }
+  }
+
+  Future<void> _loadMyTasks() async {
+    setState(() => _isMyTasksLoading = true);
+    try {
+      final res = await widget.apiClient.dio.get(ApiEndpoints.myTasks);
+      if (mounted) {
+        setState(() {
+          _myTasks = res.data['data'] as List<dynamic>? ?? [];
+        });
+      }
+    } catch (_) {} finally {
+      if (mounted) setState(() => _isMyTasksLoading = false);
+    }
+  }
+
+  Future<void> _loadActivityLogs() async {
+    setState(() => _isLogsLoading = true);
+    try {
+      final res = await widget.apiClient.dio.get(ApiEndpoints.activityLogs);
+      if (mounted) {
+        setState(() {
+          _activityLogs = res.data['data'] as List<dynamic>? ?? [];
+        });
+      }
+    } catch (_) {} finally {
+      if (mounted) setState(() => _isLogsLoading = false);
+    }
+  }
+
+  void _switchTab(String tab) {
+    setState(() => _activeTab = tab);
+    Navigator.pop(context); // Close Drawer
+    if (tab == 'dashboard' && _dashboardData == null) {
+      _loadDashboard();
+    } else if (tab == 'my_tasks' && _myTasks.isEmpty) {
+      _loadMyTasks();
+    } else if (tab == 'activity_logs' && _activityLogs.isEmpty) {
+      _loadActivityLogs();
     }
   }
 
@@ -446,6 +514,34 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     );
   }
 
+  Color _priorityColor(String? priority) {
+    switch (priority?.toLowerCase()) {
+      case 'urgent':
+        return Colors.purple;
+      case 'high':
+        return Colors.red;
+      case 'medium':
+        return Colors.amber.shade800;
+      case 'low':
+      default:
+        return Colors.green;
+    }
+  }
+
+  String _getAppTitle() {
+    switch (_activeTab) {
+      case 'dashboard':
+        return 'Dashboard Ringkasan';
+      case 'my_tasks':
+        return 'Tugas Saya (My Tasks)';
+      case 'activity_logs':
+        return 'Activity Logs';
+      case 'spaces':
+      default:
+        return 'Spaces & Projects';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -455,136 +551,695 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             Image.asset('assets/images/logo.png', width: 28, height: 28),
             const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('NexSphere Workspaces', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  if (_userName != null)
-                    Text('Halo, $_userName', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                ],
+              child: Text(
+                _getAppTitle(),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout_rounded, size: 20),
-            tooltip: 'Keluar',
-            onPressed: _logout,
+            icon: const Icon(Icons.refresh_rounded, size: 22),
+            tooltip: 'Segarkan data',
+            onPressed: () {
+              if (_activeTab == 'dashboard') {
+                _loadDashboard();
+              } else if (_activeTab == 'my_tasks') {
+                _loadMyTasks();
+              } else if (_activeTab == 'activity_logs') {
+                _loadActivityLogs();
+              } else {
+                _loadInitialData();
+              }
+            },
           ),
         ],
       ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            UserAccountsDrawerHeader(
+              decoration: const BoxDecoration(
+                color: Color(0xFF00AAAD),
+              ),
+              currentAccountPicture: CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: Image.asset('assets/images/logo.png'),
+                ),
+              ),
+              accountName: Text(
+                _userName ?? 'Pengguna NexSphere',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              accountEmail: Text(
+                _userEmail ?? 'nexsphere@user.com',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            if (_selectedWorkspace != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00AAAD).withAlpha(20),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.business_rounded, size: 16, color: Color(0xFF00AAAD)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _selectedWorkspace!['name'] as String,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF00AAAD),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const Padding(
+              padding: EdgeInsets.only(left: 16, top: 12, bottom: 4),
+              child: Text(
+                'RINGKASAN & PROYEK',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.dashboard_rounded),
+              title: const Text('Dashboard', style: TextStyle(fontWeight: FontWeight.w600)),
+              selected: _activeTab == 'dashboard',
+              selectedColor: const Color(0xFF00AAAD),
+              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
+              onTap: () => _switchTab('dashboard'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open_rounded),
+              title: const Text('Spaces & Projects', style: TextStyle(fontWeight: FontWeight.w600)),
+              selected: _activeTab == 'spaces',
+              selectedColor: const Color(0xFF00AAAD),
+              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withAlpha(30),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('${_spaces.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+              onTap: () => _switchTab('spaces'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.check_box_outlined),
+              title: const Text('Tugas Saya (My Tasks)', style: TextStyle(fontWeight: FontWeight.w600)),
+              selected: _activeTab == 'my_tasks',
+              selectedColor: const Color(0xFF00AAAD),
+              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
+              onTap: () => _switchTab('my_tasks'),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(left: 16, top: 12, bottom: 4),
+              child: Text(
+                'KOLABORASI',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history_rounded),
+              title: const Text('Activity Logs', style: TextStyle(fontWeight: FontWeight.w600)),
+              selected: _activeTab == 'activity_logs',
+              selectedColor: const Color(0xFF00AAAD),
+              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
+              onTap: () => _switchTab('activity_logs'),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Pengaturan Server API'),
+              onTap: () {
+                Navigator.pop(context);
+                _showServerSettingsDialog(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: Colors.red),
+              title: const Text('Keluar (Logout)', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _logout();
+              },
+            ),
+          ],
+        ),
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadWorkspaces,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (_workspaces.length > 1) ...[
-                    const Text('Pilih Workspace:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<int>(
-                      initialValue: _selectedWorkspace?['id'] as int?,
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      ),
-                      items: _workspaces.map((w) {
-                        return DropdownMenuItem<int>(
-                          value: w['id'] as int,
-                          child: Text(w['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        );
-                      }).toList(),
-                      onChanged: (id) {
-                        if (id != null) {
-                          final selected = _workspaces.firstWhere((w) => w['id'] == id);
-                          setState(() => _selectedWorkspace = selected);
-                          _loadSpacesForWorkspace(id);
-                        }
-                      },
+          : _buildCurrentContent(),
+    );
+  }
+
+  void _showServerSettingsDialog(BuildContext context) {
+    final serverCtrl = TextEditingController(text: widget.apiClient.dio.options.baseUrl);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Alamat Server API'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Ubah Base URL API jika diperlukan:',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: serverCtrl,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Preset Server:\n- Live: https://projectmanagement.nexsphere.web.id/api/v1\n- Emulator: http://10.0.2.2:8000/api/v1',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              widget.apiClient.setBaseUrl('https://projectmanagement.nexsphere.web.id/api/v1');
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Server di-reset ke Live Produksi')),
+              );
+            },
+            child: const Text('Reset Live'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newUrl = serverCtrl.text.trim();
+              if (newUrl.isNotEmpty) {
+                widget.apiClient.setBaseUrl(newUrl);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Server diubah ke: $newUrl')),
+                );
+              }
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentContent() {
+    switch (_activeTab) {
+      case 'dashboard':
+        return _buildDashboardView();
+      case 'my_tasks':
+        return _buildMyTasksView();
+      case 'activity_logs':
+        return _buildActivityLogsView();
+      case 'spaces':
+      default:
+        return _buildSpacesView();
+    }
+  }
+
+  // 1. DASHBOARD VIEW
+  Widget _buildDashboardView() {
+    if (_isDashboardLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final d = _dashboardData ?? {};
+    final totalWs = d['totalWorkspaces'] ?? _workspaces.length;
+    final totalSp = d['totalSpaces'] ?? _spaces.length;
+    final totalTk = d['totalTasks'] ?? 0;
+    final compTk = d['completedTasks'] ?? 0;
+    final actTk = d['activeTasks'] ?? 0;
+    final rate = d['completionRate'] ?? 0;
+
+    return RefreshIndicator(
+      onRefresh: _loadDashboard,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Completion rate card
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF00AAAD), Color(0xFF007A7C)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Tingkat Penyelesaian Proyek',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '$rate%',
+                      style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 20),
+                    Text(
+                      '$compTk / $totalTk Selesai',
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
                   ],
-                  const Text('Daftar Space Proyek:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  if (_spaces.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      alignment: Alignment.center,
-                      child: const Column(
-                        children: [
-                          Icon(Icons.folder_open_rounded, size: 48, color: Colors.grey),
-                          SizedBox(height: 8),
-                          Text('Belum ada Space proyek di workspace ini.', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                        ],
-                      ),
-                    )
-                  else
-                    ..._spaces.map((sp) {
-                      return Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          side: BorderSide(color: Colors.grey.withAlpha(40)),
+                ),
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: totalTk > 0 ? compTk / totalTk : 0,
+                    backgroundColor: Colors.white24,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                    minHeight: 8,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text('Metrik Ringkasan:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          const SizedBox(height: 12),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.4,
+            children: [
+              _buildStatCard('Total Workspaces', '$totalWs', Icons.business_rounded, const Color(0xFF00AAAD)),
+              _buildStatCard('Total Spaces', '$totalSp', Icons.folder_open_rounded, Colors.indigo),
+              _buildStatCard('Tugas Aktif', '$actTk', Icons.pending_actions_rounded, Colors.orange),
+              _buildStatCard('Tugas Selesai', '$compTk', Icons.check_circle_rounded, Colors.green),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Spaces Cepat:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              TextButton(
+                onPressed: () => _switchTab('spaces'),
+                child: const Text('Lihat Semua'),
+              ),
+            ],
+          ),
+          ..._spaces.take(3).map((sp) {
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00AAAD).withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.folder_rounded, color: Color(0xFF00AAAD), size: 20),
+              ),
+              title: Text(sp['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              subtitle: Text(sp['description'] as String? ?? 'Space proyek', maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => KanbanBoardScreen(
+                      spaceId: sp['id'] as int,
+                      spaceName: sp['name'] as String,
+                      kanbanRepo: widget.kanbanRepo,
+                    ),
+                  ),
+                );
+              },
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.withAlpha(35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500)),
+              Icon(icon, size: 20, color: color),
+            ],
+          ),
+          Text(
+            value,
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 2. SPACES & PROJECTS VIEW
+  Widget _buildSpacesView() {
+    return RefreshIndicator(
+      onRefresh: _loadInitialData,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_workspaces.length > 1) ...[
+            const Text('Pilih Workspace:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<int>(
+              initialValue: _selectedWorkspace?['id'] as int?,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              ),
+              items: _workspaces.map((w) {
+                return DropdownMenuItem<int>(
+                  value: w['id'] as int,
+                  child: Text(w['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
+                );
+              }).toList(),
+              onChanged: (id) {
+                if (id != null) {
+                  final selected = _workspaces.firstWhere((w) => w['id'] == id);
+                  setState(() => _selectedWorkspace = selected);
+                  _loadSpacesForWorkspace(id);
+                }
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+          const Text('Daftar Space Proyek:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          if (_spaces.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              alignment: Alignment.center,
+              child: const Column(
+                children: [
+                  Icon(Icons.folder_open_rounded, size: 48, color: Colors.grey),
+                  SizedBox(height: 8),
+                  Text('Belum ada Space proyek di workspace ini.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ],
+              ),
+            )
+          else
+            ..._spaces.map((sp) {
+              return Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(color: Colors.grey.withAlpha(40)),
+                ),
+                margin: const EdgeInsets.only(bottom: 12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => KanbanBoardScreen(
+                          spaceId: sp['id'] as int,
+                          spaceName: sp['name'] as String,
+                          kanbanRepo: widget.kanbanRepo,
                         ),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => KanbanBoardScreen(
-                                  spaceId: sp['id'] as int,
-                                  spaceName: sp['name'] as String,
-                                  kanbanRepo: widget.kanbanRepo,
-                                ),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00AAAD).withAlpha(30),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.view_kanban_rounded, color: Color(0xFF00AAAD), size: 24),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                sp['name'] as String,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                               ),
-                            );
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 42,
-                                  height: 42,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF00AAAD).withAlpha(30),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Icon(Icons.view_kanban_rounded, color: Color(0xFF00AAAD), size: 24),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        sp['name'] as String,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        sp['description'] as String? ?? 'Space proyek tim',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(color: Colors.grey, fontSize: 12),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Icon(Icons.chevron_right_rounded, color: Colors.grey),
-                              ],
-                            ),
+                              const SizedBox(height: 2),
+                              Text(
+                                sp['description'] as String? ?? 'Space proyek tim',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    }),
+                        const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  // 3. MY TASKS VIEW
+  Widget _buildMyTasksView() {
+    if (_isMyTasksLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_myTasks.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.assignment_turned_in_rounded, size: 56, color: Colors.grey),
+            const SizedBox(height: 12),
+            const Text('Tidak ada tugas untuk Anda', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 6),
+            const Text('Semua tugas telah diselesaikan atau belum ditugaskan.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadMyTasks,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Muat Ulang'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadMyTasks,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _myTasks.length,
+        itemBuilder: (ctx, idx) {
+          final t = _myTasks[idx];
+          final priority = (t['priority'] as String?) ?? 'medium';
+          final pColor = _priorityColor(priority);
+          final stageName = t['stage']?['name'] as String? ?? 'Tahapan';
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: Colors.grey.withAlpha(35)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: pColor.withAlpha(25),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          priority.toUpperCase(),
+                          style: TextStyle(color: pColor, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withAlpha(25),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          stageName,
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    t['title'] as String,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  if (t['description'] != null && (t['description'] as String).isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      t['description'] as String,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (t['due_at'] != null) ...[
+                        const Icon(Icons.calendar_today_outlined, size: 12, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          t['due_at'] as String,
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      if (t['checklists_count'] != null && (t['checklists_count'] as int) > 0) ...[
+                        const Icon(Icons.check_box_outlined, size: 13, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${t['completed_checklists_count'] ?? 0}/${t['checklists_count']}',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
+          );
+        },
+      ),
+    );
+  }
+
+  // 4. ACTIVITY LOGS VIEW
+  Widget _buildActivityLogsView() {
+    if (_isLogsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_activityLogs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.history_rounded, size: 56, color: Colors.grey),
+            const SizedBox(height: 12),
+            const Text('Belum ada log aktivitas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadActivityLogs,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Muat Ulang'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadActivityLogs,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: _activityLogs.length,
+        separatorBuilder: (_, __) => const Divider(height: 16),
+        itemBuilder: (ctx, idx) {
+          final log = _activityLogs[idx];
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00AAAD).withAlpha(20),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.bolt_rounded, size: 18, color: Color(0xFF00AAAD)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      log['description'] as String? ?? 'Aktivitas sistem',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      log['created_at'] as String? ?? '',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
