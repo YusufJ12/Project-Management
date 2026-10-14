@@ -17,8 +17,8 @@ class Space extends Model
     protected function casts(): array
     {
         return [
-            'starts_at' => 'date',
-            'due_at' => 'date',
+            'starts_at' => 'date:Y-m-d',
+            'due_at' => 'date:Y-m-d',
             'archived_at' => 'datetime',
         ];
     }

@@ -48,7 +48,7 @@ class WorkspaceController extends Controller
                     'members_count' => $ws->members_count,
                     'spaces_count' => $ws->spaces_count,
                     'is_active' => $ws->id === $request->session()->get('active_workspace_id'),
-                    'created_at' => $ws->created_at->format('d M Y'),
+                    'created_at' => $ws->created_at->translatedFormat('d M Y'),
                     'members' => $ws->members->map(fn ($m) => [
                         'id' => $m->id,
                         'name' => $m->name,

@@ -17,8 +17,8 @@ class Task extends Model
     protected function casts(): array
     {
         return [
-            'start_date' => 'date',
-            'due_at' => 'date',
+            'start_date' => 'date:Y-m-d',
+            'due_at' => 'date:Y-m-d',
             'archived_at' => 'datetime',
         ];
     }

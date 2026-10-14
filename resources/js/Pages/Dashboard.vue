@@ -261,8 +261,9 @@ const priorityBadge = (priority) => {
                                                 {{ task.stage_name }}
                                             </span>
                                         </td>
-                                        <td class="pe-4 text-end fs-12 text-muted">
-                                            {{ task.due_at }}
+                                        <td class="pe-4 text-end fs-12" :class="task.is_overdue ? 'text-danger fw-semibold' : 'text-muted'">
+                                            <i class="ri-calendar-line me-1"></i>{{ task.due_at }}
+                                            <span v-if="task.is_overdue" class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill fs-10 ms-1">Overdue</span>
                                         </td>
                                     </tr>
                                 </tbody>

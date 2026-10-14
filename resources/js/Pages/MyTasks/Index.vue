@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { formatDate, isOverdueDate } from '@/Utils/date';
 
 const props = defineProps({
     tasks: {
@@ -77,8 +78,7 @@ const priorityBadge = (pri) => {
 };
 
 const isOverdue = (task) => {
-    if (!task.due_at || task.stage?.is_done) return false;
-    return new Date(task.due_at) < new Date(new Date().setHours(0, 0, 0, 0));
+    return isOverdueDate(task.due_at, task.stage?.is_done);
 };
 </script>
 
@@ -255,7 +255,7 @@ const isOverdue = (task) => {
                                 </td>
                                 <td>
                                     <div v-if="task.due_at" class="fs-12" :class="isOverdue(task) ? 'text-danger fw-bold' : 'text-muted'">
-                                        <i class="ri-calendar-line me-1"></i>{{ task.due_at }}
+                                        <i class="ri-calendar-line me-1"></i>{{ formatDate(task.due_at) }}
                                         <span v-if="isOverdue(task)" class="badge bg-danger text-white rounded-pill fs-10 ms-1">Overdue</span>
                                     </div>
                                     <span v-else class="text-muted fs-12">-</span>

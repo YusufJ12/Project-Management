@@ -73,7 +73,7 @@ class DashboardController extends Controller
                 'progress' => $prog,
                 'total_tasks' => $tot,
                 'completed_tasks' => $done,
-                'due_at' => $space->due_at ? $space->due_at->format('d M Y') : 'Tanpa deadline',
+                'due_at' => $space->due_at ? $space->due_at->translatedFormat('d M Y') : 'Tanpa deadline',
             ];
         });
 
@@ -96,7 +96,8 @@ class DashboardController extends Controller
                     'id' => $t->id,
                     'title' => $t->title,
                     'priority' => $t->priority,
-                    'due_at' => $t->due_at ? $t->due_at->format('d M Y') : '-',
+                    'due_at' => $t->due_at ? $t->due_at->translatedFormat('d M Y') : '-',
+                    'is_overdue' => $t->due_at && $t->due_at->isPast(),
                     'stage_name' => $t->stage?->name,
                     'stage_color' => $t->stage?->color,
                     'space_name' => $t->list?->space?->name,

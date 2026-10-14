@@ -73,13 +73,13 @@ class SpaceController extends Controller
                     'slug' => $space->slug,
                     'description' => $space->description,
                     'status' => $space->status,
-                    'starts_at' => $space->starts_at?->format('d M Y'),
-                    'due_at' => $space->due_at?->format('d M Y'),
+                    'starts_at' => $space->starts_at?->translatedFormat('d M Y'),
+                    'due_at' => $space->due_at?->translatedFormat('d M Y'),
                     'members' => $space->members,
                     'total_tasks' => $totalTasks,
                     'completed_tasks' => $completedTasks,
                     'progress' => $progress,
-                    'created_at' => $space->created_at->format('d M Y'),
+                    'created_at' => $space->created_at->translatedFormat('d M Y'),
                 ];
             });
 

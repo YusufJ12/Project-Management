@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { confirmDelete, confirmAction, showWarning, showToast } from '@/Utils/alert';
+import { formatDate } from '@/Utils/date';
 
 const props = defineProps({
     workspaces: {
@@ -405,7 +406,7 @@ const getRoleLabel = (role) => {
                             </div>
                             <div class="col-6">
                                 <span class="text-muted d-block fs-11">DIBUAT PADA</span>
-                                <span class="fw-semibold text-body">{{ ws.created_at }}</span>
+                                <span class="fw-semibold text-body">{{ formatDate(ws.created_at) }}</span>
                             </div>
                         </div>
 

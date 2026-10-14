@@ -5,6 +5,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import GanttTimeline from '@/Components/GanttTimeline.vue';
 import Sortable from 'sortablejs';
 import { confirmDelete, showToast } from '@/Utils/alert';
+import { formatDate, formatDateShort, formatDueDate, formatDateTime, isOverdueDate } from '@/Utils/date';
 
 const props = defineProps({
     space: {
@@ -338,16 +339,6 @@ const formatFileSize = (bytes) => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
-const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    try {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-    } catch {
-        return dateStr;
-    }
-};
-
 // ==========================================
 // TASK DETAIL MODAL STATE & METHODS
 // ==========================================
@@ -392,8 +383,8 @@ const openTaskModal = async (task) => {
     taskDescription.value = task.description || '';
     taskPriority.value = task.priority || 'medium';
     taskStageId.value = task.stage_id;
-    taskStartDate.value = task.start_date || '';
-    taskDueAt.value = task.due_at || '';
+    taskStartDate.value = task.start_date ? String(task.start_date).substring(0, 10) : '';
+    taskDueAt.value = task.due_at ? String(task.due_at).substring(0, 10) : '';
     taskEstimateMinutes.value = task.estimate_minutes || '';
     taskAssigneeIds.value = task.assignees ? task.assignees.map((a) => a.id) : [];
     newChecklistTitle.value = '';
@@ -415,8 +406,8 @@ const openTaskModal = async (task) => {
             const data = await res.json();
             if (data.task) {
                 selectedTask.value = data.task;
-                taskStartDate.value = data.task.start_date || '';
-                taskDueAt.value = data.task.due_at || '';
+                taskStartDate.value = data.task.start_date ? String(data.task.start_date).substring(0, 10) : '';
+                taskDueAt.value = data.task.due_at ? String(data.task.due_at).substring(0, 10) : '';
                 taskActivityLogs.value = data.activity_logs || [];
             }
         }
@@ -1017,7 +1008,7 @@ const filteredTasks = computed(() => {
                     <!-- Right Meta: Members & Deadline -->
                     <div class="d-flex flex-wrap align-items-center gap-3">
                         <div v-if="space.due_at" class="bg-light border rounded-pill px-3 py-1 fs-12 text-muted">
-                            <i class="ri-calendar-line me-1 text-primary"></i> Tenggat: <span class="fw-semibold text-body">{{ space.due_at }}</span>
+                            <i class="ri-calendar-line me-1 text-primary"></i> Tenggat: <span class="fw-semibold text-body">{{ formatDate(space.due_at) }}</span>
                         </div>
                         <div class="d-flex align-items-center">
                             <div
@@ -1262,8 +1253,13 @@ const filteredTasks = computed(() => {
                                         <i class="ri-chat-3-line"></i>
                                         {{ task.comments.length }}
                                     </span>
-                                    <span v-if="task.due_at" class="text-muted">
-                                        <i class="ri-calendar-line me-1"></i> {{ task.due_at }}
+                                    <span
+                                        v-if="task.due_at"
+                                        class="d-flex align-items-center gap-1"
+                                        :class="isOverdueDate(task.due_at, stage.is_done) ? 'text-danger fw-semibold' : 'text-muted'"
+                                        :title="'Tenggat: ' + formatDate(task.due_at)"
+                                    >
+                                        <i class="ri-calendar-line"></i> {{ formatDueDate(task.due_at) }}
                                     </span>
                                 </div>
                                 <div class="d-flex align-items-center">
@@ -1608,8 +1604,8 @@ const filteredTasks = computed(() => {
                                 </div>
                             </td>
                             <td>
-                                <span v-if="task.due_at" class="fs-12 text-muted">
-                                    <i class="ri-calendar-line me-1"></i> {{ task.due_at }}
+                                <span v-if="task.due_at" class="fs-12" :class="isOverdueDate(task.due_at) ? 'text-danger fw-semibold' : 'text-muted'">
+                                    <i class="ri-calendar-line me-1"></i> {{ formatDate(task.due_at) }}
                                 </span>
                                 <span v-else class="text-muted fs-11">-</span>
                             </td>
@@ -2151,7 +2147,7 @@ const filteredTasks = computed(() => {
                                                             {{ com.user?.name?.charAt(0).toUpperCase() || 'U' }}
                                                         </div>
                                                         <span class="fw-bold fs-13 text-body">{{ com.user?.name || 'User' }}</span>
-                                                        <span class="fs-11 text-muted">{{ formatDate(com.created_at) }}</span>
+                                                        <span class="fs-11 text-muted">{{ formatDateTime(com.created_at) }}</span>
                                                     </div>
                                                     <button
                                                         type="button"
@@ -2195,7 +2191,7 @@ const filteredTasks = computed(() => {
                                                         <span v-else-if="act.metadata.file_name">Berkas: {{ act.metadata.file_name }}</span>
                                                     </div>
                                                 </div>
-                                                <span class="fs-10 text-muted">{{ formatDate(act.created_at) }}</span>
+                                                <span class="fs-10 text-muted">{{ formatDateTime(act.created_at) }}</span>
                                             </div>
                                         </div>
                                         <div v-else class="text-muted fs-11">

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
+import { formatDateShort } from '@/Utils/date';
 
 const props = defineProps({
     tasks: {
@@ -111,21 +112,10 @@ const todayPercent = computed(() => {
 
 // Format Task Start & Due Date for left table
 const formatTaskDates = (task) => {
-    if (!task.start_date && !task.due_at) return 'No dates';
-    
-    const formatDateShort = (dStr) => {
-        if (!dStr) return '';
-        const d = new Date(dStr);
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    };
+    if (!task.start_date && !task.due_at) return 'Tanpa tanggal';
 
     if (task.start_date && task.due_at) {
         if (task.start_date === task.due_at) return formatDateShort(task.due_at);
-        const start = new Date(task.start_date);
-        const due = new Date(task.due_at);
-        if (start.getMonth() === due.getMonth()) {
-            return `${start.toLocaleDateString('en-US', { month: 'short' })} ${start.getDate()} - ${due.getDate()}`;
-        }
         return `${formatDateShort(task.start_date)} - ${formatDateShort(task.due_at)}`;
     }
 
