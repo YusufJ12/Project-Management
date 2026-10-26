@@ -15,6 +15,7 @@ use App\Http\Resources\Api\TaskResource;
 use App\Models\ActivityLog;
 use App\Models\Task;
 use App\Models\TaskChecklist;
+use App\Models\TaskComment;
 use App\Models\TaskList;
 use App\Models\TaskStage;
 use App\Services\NotificationService;
@@ -156,7 +157,7 @@ class TaskApiController extends Controller
             ],
         ]);
 
-        $task->load(['stage', 'assignees', 'checklists']);
+        $task->load(['stage', 'assignees', 'checklists', 'attachments', 'dependencies.stage']);
 
         DB::afterCommit(function () use ($task, $user, $space) {
             try {
@@ -176,10 +177,14 @@ class TaskApiController extends Controller
     public function show(Request $request, Task $task): JsonResponse
     {
         $user = $request->user();
-        $task->load('list.space');
+        $task->load('list.space.workspace');
         $space = $task->list->space;
 
-        if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+        $hasAccess = $user->isSuperAdmin() ||
+            $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists() ||
+            $space->members()->where('users.id', $user->id)->exists();
+
+        if (! $hasAccess) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
         }
 
@@ -188,8 +193,9 @@ class TaskApiController extends Controller
             'assignees',
             'checklists.completedBy',
             'comments.user',
-            'dependencies:id,title,start_date,due_at',
-            'dependents:id,title,start_date,due_at',
+            'attachments',
+            'dependencies.stage',
+            'dependents.stage',
         ]);
 
         return response()->json([
@@ -341,7 +347,7 @@ class TaskApiController extends Controller
             TaskNotificationService::notifyTaskCompleted($task, $user);
         }
 
-        $task->load(['stage', 'assignees', 'checklists']);
+        $task->load(['stage', 'assignees', 'checklists', 'attachments', 'dependencies.stage']);
 
         DB::afterCommit(function () use ($task, $user, $space) {
             try {
@@ -468,7 +474,7 @@ class TaskApiController extends Controller
             TaskNotificationService::notifyTaskCompleted($task, $user);
         }
 
-        $task->load(['stage', 'assignees', 'checklists']);
+        $task->load(['stage', 'assignees', 'checklists', 'attachments', 'dependencies.stage']);
 
         DB::afterCommit(function () use ($task, $oldStageId, $newStageId, $newPosition, $user, $space) {
             try {
@@ -612,6 +618,35 @@ class TaskApiController extends Controller
         ]);
     }
 
+    public function deleteChecklist(Request $request, Task $task, TaskChecklist $checklist): JsonResponse
+    {
+        $user = $request->user();
+        $task->load('list.space.workspace');
+        $space = $task->list->space;
+
+        $hasAccess = $user->isSuperAdmin() ||
+            $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists();
+
+        if (! $hasAccess || (int) $checklist->task_id !== (int) $task->id) {
+            return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
+        }
+
+        if ($user->isViewerInSpace($space)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+                'error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+            ], 403);
+        }
+
+        $checklist->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Checklist item berhasil dihapus.',
+        ]);
+    }
+
     public function addComment(Request $request, Task $task): JsonResponse
     {
         $validated = $request->validate([
@@ -674,6 +709,44 @@ class TaskApiController extends Controller
             'message' => 'Komentar berhasil dikirim.',
             'data' => new TaskCommentResource($comment),
         ], 201);
+    }
+
+    public function deleteComment(Request $request, Task $task, TaskComment $comment): JsonResponse
+    {
+        $user = $request->user();
+        $task->load('list.space.workspace');
+        $space = $task->list->space;
+
+        $hasAccess = $user->isSuperAdmin() ||
+            $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists() ||
+            $space->members()->where('users.id', $user->id)->exists();
+
+        if (! $hasAccess || (int) $comment->task_id !== (int) $task->id) {
+            return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
+        }
+
+        // Author of comment or workspace/space admin/manager/owner can delete
+        $membership = $user->workspaces()->where('workspaces.id', $space->workspace_id)->first();
+        $isWorkspaceAdmin = $membership && in_array($membership->pivot->role, ['owner', 'admin', 'manager'], true);
+        $isSpaceManager = $space->members()->where('users.id', $user->id)->wherePivot('role', 'manager')->exists();
+        $isPrivileged = $user->isSuperAdmin() ||
+            ((int) $space->workspace->owner_id === (int) $user->id) ||
+            $isWorkspaceAdmin ||
+            $isSpaceManager;
+
+        if ((int) $comment->user_id !== (int) $user->id && ! $isPrivileged) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Anda tidak berhak menghapus komentar ini.',
+            ], 403);
+        }
+
+        $comment->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Komentar berhasil dihapus.',
+        ]);
     }
 
     public function myTasks(Request $request): JsonResponse

@@ -66,6 +66,11 @@ class User extends Authenticatable
         return $this->hasMany(Notification::class, 'user_id');
     }
 
+    public function deviceTokens(): HasMany
+    {
+        return $this->hasMany(UserDeviceToken::class, 'user_id');
+    }
+
     /**
      * RBAC Helpers
      */

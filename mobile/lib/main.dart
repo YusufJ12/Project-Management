@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'core/constants/api_endpoints.dart';
 import 'core/network/api_client.dart';
+import 'core/realtime/reverb_websocket_client.dart';
+import 'features/auth/models/user_model.dart';
 import 'features/kanban/models/stage_model.dart';
 import 'features/kanban/models/task_model.dart';
 import 'features/kanban/repositories/kanban_repository.dart';
+import 'features/notifications/presentation/notifications_sheet.dart';
+import 'features/tasks/presentation/task_detail_modal.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -389,6 +394,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   List<dynamic> _spaces = [];
   String? _userName;
   String? _userEmail;
+  UserModel? _currentUser;
+  int _unreadNotificationsCount = 0;
 
   // Dashboard Metrics
   Map<String, dynamic>? _dashboardData;
@@ -414,12 +421,27 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _loadInitialData();
   }
 
+  Future<void> _fetchUnreadNotificationsCount() async {
+    try {
+      final notifs = await widget.kanbanRepo.getNotifications();
+      if (!mounted) return;
+      setState(() {
+        _unreadNotificationsCount = notifs.where((n) => !n.isRead).length;
+      });
+    } catch (_) {}
+  }
+
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
       final meRes = await widget.apiClient.dio.get(ApiEndpoints.me);
       _userName = meRes.data['user']?['name'];
       _userEmail = meRes.data['user']?['email'];
+      final userJson = meRes.data['user'] as Map<String, dynamic>?;
+      if (userJson != null) {
+        _currentUser = UserModel.fromJson(userJson);
+      }
+      _fetchUnreadNotificationsCount();
 
       final wsRes = await widget.apiClient.dio.get(ApiEndpoints.workspaces);
       final wsList = wsRes.data['data'] as List<dynamic>? ?? [];
@@ -906,6 +928,63 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined, size: 23),
+                if (_unreadNotificationsCount > 0)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        _unreadNotificationsCount > 9 ? '9+' : '$_unreadNotificationsCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            tooltip: 'Notifikasi',
+            onPressed: () {
+              NotificationsSheet.show(
+                context,
+                kanbanRepo: widget.kanbanRepo,
+                onNotificationsUpdated: _fetchUnreadNotificationsCount,
+                onNotificationTapped: (notification) {
+                  if (notification.taskId != null) {
+                    TaskDetailModal.show(
+                      context,
+                      taskId: notification.taskId!,
+                      kanbanRepo: widget.kanbanRepo,
+                      currentUser: _currentUser,
+                      onTaskUpdated: () {
+                        if (_activeTab == 'my_tasks') _loadMyTasks();
+                        if (_activeTab == 'timeline' && _timelineSpaceId != null) {
+                          _loadTimeline(_timelineSpaceId!);
+                        }
+                      },
+                    );
+                  }
+                },
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, size: 22),
             tooltip: 'Segarkan data',
@@ -1668,41 +1747,58 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                   side: BorderSide(color: Colors.grey.withAlpha(35)),
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: pColor.withAlpha(25),
-                                              borderRadius: BorderRadius.circular(6),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () {
+                                    final taskId = t['id'] as int;
+                                    TaskDetailModal.show(
+                                      context,
+                                      taskId: taskId,
+                                      kanbanRepo: widget.kanbanRepo,
+                                      currentUser: _currentUser,
+                                      onTaskUpdated: () {
+                                        if (_timelineSpaceId != null) {
+                                          _loadTimeline(_timelineSpaceId!);
+                                        }
+                                      },
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: pColor.withAlpha(25),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                priority.toUpperCase(),
+                                                style: TextStyle(color: pColor, fontSize: 9, fontWeight: FontWeight.bold),
+                                              ),
                                             ),
-                                            child: Text(
-                                              priority.toUpperCase(),
-                                              style: TextStyle(color: pColor, fontSize: 9, fontWeight: FontWeight.bold),
+                                            Text(
+                                              stage['name'] as String? ?? 'Tahapan',
+                                              style: const TextStyle(fontSize: 10, color: Colors.grey),
                                             ),
-                                          ),
-                                          Text(
-                                            stage['name'] as String? ?? 'Tahapan',
-                                            style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        t['title'] as String,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                          decoration: isDone ? TextDecoration.lineThrough : null,
+                                          ],
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          t['title'] as String,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            decoration: isDone ? TextDecoration.lineThrough : null,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1792,6 +1888,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       final stageName = t['stage']?['name'] as String? ?? 'Tahapan';
                       final isDone = t['stage']?['is_done'] as bool? ?? false;
 
+                      final taskId = t['id'] as int;
+
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
                         elevation: 0,
@@ -1799,8 +1897,19 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                           borderRadius: BorderRadius.circular(14),
                           side: BorderSide(color: Colors.grey.withAlpha(35)),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            TaskDetailModal.show(
+                              context,
+                              taskId: taskId,
+                              kanbanRepo: widget.kanbanRepo,
+                              currentUser: _currentUser,
+                              onTaskUpdated: _loadMyTasks,
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1878,7 +1987,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                             ],
                           ),
                         ),
-                      );
+                      ),
+                    );
                     },
                   ),
                 ),
@@ -1980,15 +2090,83 @@ class KanbanBoardScreen extends StatefulWidget {
 class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
   bool _isLoading = true;
   List<StageModel> _stages = [];
+  List<UserModel> _spaceMembers = [];
+
+  ReverbWebSocketClient? _reverbClient;
+  StreamSubscription<ReverbEvent>? _realtimeSubscription;
+  StreamSubscription<String>? _connectionSubscription;
+  String _wsStatus = ReverbConnectionState.disconnected;
 
   @override
   void initState() {
     super.initState();
     _fetchStages();
+    _fetchSpaceMembers();
+    _initRealtime();
   }
 
-  Future<void> _fetchStages() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _realtimeSubscription?.cancel();
+    _connectionSubscription?.cancel();
+    _reverbClient?.disconnect();
+    super.dispose();
+  }
+
+  void _initRealtime() {
+    _reverbClient = ReverbWebSocketClient(
+      apiClient: widget.kanbanRepo.apiClient,
+    );
+
+    _connectionSubscription =
+        _reverbClient!.connectionStateStream.listen((state) {
+      if (mounted) {
+        setState(() => _wsStatus = state);
+      }
+    });
+
+    _realtimeSubscription = _reverbClient!.eventStream.listen((event) {
+      _handleRealtimeEvent(event);
+    });
+
+    _reverbClient!.connect();
+    _reverbClient!.subscribe('space.${widget.spaceId}', isPrivate: true);
+  }
+
+  void _handleRealtimeEvent(ReverbEvent event) {
+    final ev = event.event;
+    if (ev == RealtimeEvents.taskCreated ||
+        ev == RealtimeEvents.taskUpdated ||
+        ev == RealtimeEvents.taskMoved ||
+        ev == RealtimeEvents.taskDeleted ||
+        ev == RealtimeEvents.taskCommentAdded ||
+        ev == RealtimeEvents.taskChecklistToggled ||
+        ev == RealtimeEvents.taskAttachmentUploaded ||
+        ev == RealtimeEvents.taskAttachmentDeleted ||
+        ev == RealtimeEvents.spaceStageChanged ||
+        ev.contains('Task') ||
+        ev.contains('Stage')) {
+      _fetchStages(silent: true);
+    }
+  }
+
+  Future<void> _fetchSpaceMembers() async {
+    try {
+      final res = await widget.kanbanRepo.apiClient.dio
+          .get(ApiEndpoints.spaceDetail(widget.spaceId));
+      final membersJson = res.data['data']?['members'] as List<dynamic>? ?? [];
+      if (mounted) {
+        setState(() {
+          _spaceMembers = membersJson
+              .map((m) => UserModel.fromJson(m as Map<String, dynamic>))
+              .toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchStages({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     try {
       final stages = await widget.kanbanRepo.getSpaceStages(widget.spaceId);
       if (mounted) {
@@ -1999,8 +2177,20 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
     } catch (_) {
       // Handle error
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && !silent) setState(() => _isLoading = false);
     }
+  }
+
+  void _openTaskDetail(TaskModel task) {
+    TaskDetailModal.show(
+      context,
+      taskId: task.id,
+      initialTask: task,
+      kanbanRepo: widget.kanbanRepo,
+      stages: _stages,
+      spaceMembers: _spaceMembers,
+      onTaskUpdated: () => _fetchStages(silent: true),
+    );
   }
 
   Color _parseColor(String? hexString) {
@@ -2116,166 +2306,55 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
     );
   }
 
-  void _showTaskDetailDialog(TaskModel task) {
-    final titleCtrl = TextEditingController(text: task.title);
-    final descCtrl = TextEditingController(text: task.description ?? '');
-    String selectedPriority = task.priority;
-    int selectedStageId = task.stageId;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Row(
-            children: [
-              Expanded(
-                child: Text('Edit Tugas #${task.id}', style: const TextStyle(fontSize: 16)),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                tooltip: 'Hapus Tugas',
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  _confirmDeleteTask(task.id);
-                },
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: titleCtrl,
-                  decoration: const InputDecoration(labelText: 'Judul Tugas'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: descCtrl,
-                  decoration: const InputDecoration(labelText: 'Deskripsi'),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  initialValue: selectedStageId,
-                  decoration: const InputDecoration(labelText: 'Pindahkan Tahapan'),
-                  items: _stages.map((s) {
-                    return DropdownMenuItem<int>(
-                      value: s.id,
-                      child: Text(s.name),
-                    );
-                  }).toList(),
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => selectedStageId = val);
-                  },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedPriority,
-                  decoration: const InputDecoration(labelText: 'Prioritas'),
-                  items: const [
-                    DropdownMenuItem(value: 'low', child: Text('Low')),
-                    DropdownMenuItem(value: 'medium', child: Text('Medium')),
-                    DropdownMenuItem(value: 'high', child: Text('High')),
-                    DropdownMenuItem(value: 'urgent', child: Text('Urgent')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => selectedPriority = val);
-                  },
-                ),
-                if (task.checklists.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Text('Checklists / Subtask:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  ...task.checklists.map((chk) {
-                    return CheckboxListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      value: chk.isCompleted,
-                      title: Text(chk.title, style: TextStyle(fontSize: 12, decoration: chk.isCompleted ? TextDecoration.lineThrough : null)),
-                      onChanged: (val) async {
-                        await widget.kanbanRepo.toggleChecklist(task.id, chk.id);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        if (mounted) _fetchStages();
-                      },
-                    );
-                  }),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-            ElevatedButton(
-              onPressed: () async {
-                final newTitle = titleCtrl.text.trim();
-                if (newTitle.isEmpty) return;
-                Navigator.pop(ctx);
-
-                try {
-                  // If stage changed, move task
-                  if (selectedStageId != task.stageId) {
-                    await widget.kanbanRepo.moveTask(
-                      taskId: task.id,
-                      stageId: selectedStageId,
-                      position: 1,
-                    );
-                  }
-
-                  // Update task details
-                  await widget.kanbanRepo.updateTask(
-                    taskId: task.id,
-                    title: newTitle,
-                    description: descCtrl.text.trim(),
-                    priority: selectedPriority,
-                  );
-
-                  await _fetchStages();
-                } catch (_) {}
-              },
-              child: const Text('Simpan Perubahan'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _confirmDeleteTask(int taskId) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Tugas?'),
-        content: const Text('Tugas ini akan dihapus secara permanen.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                await widget.kanbanRepo.deleteTask(taskId);
-                await _fetchStages();
-              } catch (_) {}
-            },
-            child: const Text('Hapus'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.spaceName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.spaceName,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Row(
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: _wsStatus == ReverbConnectionState.connected
+                        ? const Color(0xFF10B981)
+                        : (_wsStatus == ReverbConnectionState.connecting ||
+                                _wsStatus == ReverbConnectionState.reconnecting
+                            ? Colors.amber
+                            : Colors.grey),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  _wsStatus == ReverbConnectionState.connected
+                      ? 'Online (Realtime)'
+                      : (_wsStatus == ReverbConnectionState.connecting ||
+                              _wsStatus == ReverbConnectionState.reconnecting
+                          ? 'Menghubungkan...'
+                          : 'Offline'),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: _wsStatus == ReverbConnectionState.connected
+                        ? const Color(0xFF10B981)
+                        : Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Muat ulang',
-            onPressed: _fetchStages,
+            onPressed: () => _fetchStages(),
           ),
         ],
       ),
@@ -2372,7 +2451,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
                                         ),
                                         child: InkWell(
                                           borderRadius: BorderRadius.circular(12),
-                                          onTap: () => _showTaskDetailDialog(task),
+                                          onTap: () => _openTaskDetail(task),
                                           child: Padding(
                                             padding: const EdgeInsets.all(12),
                                             child: Column(

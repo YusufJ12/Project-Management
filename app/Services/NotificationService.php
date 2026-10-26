@@ -57,12 +57,28 @@ class NotificationService
         array $data,
         ?int $excludeUserId = null
     ): void {
+        $targetUserIds = [];
+
         foreach ($userIds as $id) {
             $id = (int) $id;
             if ($excludeUserId && $id === (int) $excludeUserId) {
                 continue;
             }
+            $targetUserIds[] = $id;
             self::send($id, $workspaceId, $type, $data);
+        }
+
+        if (! empty($targetUserIds)) {
+            try {
+                $title = $data['title'] ?? 'Notifikasi NexSphere';
+                $body = $data['message'] ?? '';
+                FcmPushService::sendPushToUsers($targetUserIds, $title, $body, array_merge($data, [
+                    'type' => $type,
+                    'workspace_id' => $workspaceId,
+                ]));
+            } catch (\Throwable $e) {
+                Log::warning('FcmPushService: Hook sendToMany failed: ' . $e->getMessage());
+            }
         }
     }
 }

@@ -29,3 +29,6 @@ database/*.sqlite-journal
 /masterhub
 deploy_key*
 *.pub
+google-services.json
+*firebase*.json
+/storage/app/firebase/*

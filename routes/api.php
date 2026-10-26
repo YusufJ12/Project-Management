@@ -1,9 +1,12 @@
 <?php
 
 use App\Http\Controllers\Api\v1\AuthController;
+use App\Http\Controllers\Api\v1\DeviceTokenApiController;
+use App\Http\Controllers\Api\v1\NotificationApiController;
 use App\Http\Controllers\Api\v1\SpaceApiController;
 use App\Http\Controllers\Api\v1\TaskApiController;
 use App\Http\Controllers\Api\v1\WorkspaceApiController;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -11,6 +14,10 @@ use Illuminate\Support\Facades\Route;
 | API Routes (NexSphere Mobile & Third-Party Integrations)
 |--------------------------------------------------------------------------
 */
+
+// Broadcasting authentication route for Sanctum mobile API
+Broadcast::routes(['prefix' => 'v1', 'middleware' => ['auth:sanctum']]);
+Broadcast::routes(['prefix' => 'api/v1', 'middleware' => ['auth:sanctum']]);
 
 Route::prefix('v1')->group(function () {
     // Public Authentication Endpoints
@@ -57,9 +64,11 @@ Route::prefix('v1')->group(function () {
         // Checklists Subtasks
         Route::post('/tasks/{task}/checklists', [TaskApiController::class, 'addChecklist']);
         Route::post('/tasks/{task}/checklists/{checklist}/toggle', [TaskApiController::class, 'toggleChecklist']);
+        Route::delete('/tasks/{task}/checklists/{checklist}', [TaskApiController::class, 'deleteChecklist']);
 
         // Comments
         Route::post('/tasks/{task}/comments', [TaskApiController::class, 'addComment'])->middleware('throttle:60,1');
+        Route::delete('/tasks/{task}/comments/{comment}', [TaskApiController::class, 'deleteComment']);
 
         // Task Attachments
         Route::post('/tasks/{task}/attachments', [\App\Http\Controllers\TaskAttachmentController::class, 'store'])->middleware('throttle:60,1');
@@ -69,5 +78,14 @@ Route::prefix('v1')->group(function () {
 
         // Activity Logs
         Route::get('/activity-logs', [WorkspaceApiController::class, 'activityLogs']);
+
+        // Notifications
+        Route::get('/notifications', [NotificationApiController::class, 'index']);
+        Route::post('/notifications/read-all', [NotificationApiController::class, 'markAllAsRead']);
+        Route::post('/notifications/{notification}/read', [NotificationApiController::class, 'markAsRead']);
+
+        // User Device Tokens (FCM)
+        Route::post('/devices/token', [DeviceTokenApiController::class, 'store']);
+        Route::delete('/devices/token', [DeviceTokenApiController::class, 'destroy']);
     });
 });
