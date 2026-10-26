@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'core/constants/api_endpoints.dart';
+import 'core/fcm/fcm_service.dart';
 import 'core/network/api_client.dart';
 import 'core/realtime/reverb_websocket_client.dart';
 import 'features/auth/models/user_model.dart';
@@ -184,6 +185,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final token = res.data['token'] as String;
       await widget.apiClient.saveToken(token);
+      try {
+        await FcmService().initialize(apiClient: widget.apiClient);
+      } catch (_) {}
 
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -229,144 +233,100 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    width: 72,
-                    height: 72,
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+            child: Container(
+              padding: const EdgeInsets.all(24.0),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.grey.withAlpha(35)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(8),
+                    blurRadius: 20,
+                    offset: const Offset(0, 4),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Masuk ke NexSphere',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Kelola tugas & kolaborasi proyek tim dari mana saja.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
-                ),
-                const SizedBox(height: 32),
-                if (_errorMessage != null)
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withAlpha(25),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.red.withAlpha(80)),
-                    ),
-                    child: Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12)),
-                  ),
-                TextField(
-                  controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: 'Email atau Username',
-                    prefixIcon: const Icon(Icons.alternate_email_rounded, size: 20),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passCtrl,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: 'Kata Sandi',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _login,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00AAAD),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Masuk Sekarang', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 20),
-                TextButton.icon(
-                  onPressed: () => _showServerSettingsDialog(context),
-                  icon: const Icon(Icons.settings_outlined, size: 16),
-                  label: const Text('Pengaturan Alamat Server API', style: TextStyle(fontSize: 12)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showServerSettingsDialog(BuildContext context) {
-    final serverCtrl = TextEditingController(text: widget.apiClient.dio.options.baseUrl);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Alamat Server API'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Ubah Base URL API jika diperlukan:',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: serverCtrl,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                isDense: true,
+                ],
               ),
-              style: const TextStyle(fontSize: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00AAAD).withAlpha(20),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        width: 56,
+                        height: 56,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Masuk ke NexSphere',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Kelola tugas & kolaborasi proyek tim dari mana saja.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                  const SizedBox(height: 28),
+                  if (_errorMessage != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withAlpha(25),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.red.withAlpha(80)),
+                      ),
+                      child: Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    ),
+                  TextField(
+                    controller: _emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: 'Email atau Username',
+                      prefixIcon: const Icon(Icons.alternate_email_rounded, size: 20),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _passCtrl,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'Kata Sandi',
+                      prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00AAAD),
+                      foregroundColor: Colors.white,
+                      elevation: 1,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Masuk Sekarang', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Preset Server:\n- Live: https://projectmanagement.nexsphere.web.id/api/v1\n- Emulator Android: http://10.0.2.2:8000/api/v1',
-              style: TextStyle(fontSize: 11, color: Colors.grey),
-            ),
-          ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              widget.apiClient.setBaseUrl('https://projectmanagement.nexsphere.web.id/api/v1');
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Server di-reset ke Live Produksi')),
-              );
-            },
-            child: const Text('Reset Live'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final newUrl = serverCtrl.text.trim();
-              if (newUrl.isNotEmpty) {
-                widget.apiClient.setBaseUrl(newUrl);
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Server diubah ke: $newUrl')),
-                );
-              }
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
       ),
     );
   }
@@ -385,9 +345,9 @@ class WorkspaceScreen extends StatefulWidget {
   State<WorkspaceScreen> createState() => _WorkspaceScreenState();
 }
 
-class _WorkspaceScreenState extends State<WorkspaceScreen> {
+class _WorkspaceScreenState extends State<WorkspaceScreen> with WidgetsBindingObserver {
   bool _isLoading = true;
-  String _activeTab = 'spaces'; // 'dashboard', 'spaces', 'my_tasks', 'activity_logs'
+  String _activeTab = 'dashboard'; // 'dashboard', 'spaces', 'my_tasks', 'timeline', 'activity_logs'
 
   List<dynamic> _workspaces = [];
   Map<String, dynamic>? _selectedWorkspace;
@@ -396,6 +356,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   String? _userEmail;
   UserModel? _currentUser;
   int _unreadNotificationsCount = 0;
+
+  StreamSubscription<FcmNotificationPayload>? _fcmMessageSubscription;
+  StreamSubscription<FcmNotificationPayload>? _fcmTapSubscription;
 
   // Dashboard Metrics
   Map<String, dynamic>? _dashboardData;
@@ -418,7 +381,132 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initFcmAndNotifications();
     _loadInitialData();
+  }
+
+  void _initFcmAndNotifications() {
+    // 1. Inisialisasi FCM & Register Token ke Server
+    try {
+      FcmService().initialize(apiClient: widget.apiClient);
+    } catch (_) {}
+
+    // 2. Foreground FCM listener (badge increment + sleek in-app banner)
+    _fcmMessageSubscription = FcmService().onMessageStream.listen((payload) {
+      if (!mounted) return;
+      _fetchUnreadNotificationsCount();
+
+      // Auto-refresh active tab jika berkaitan
+      if (_activeTab == 'my_tasks') _loadMyTasks();
+      if (_activeTab == 'timeline' && _timelineSpaceId != null) {
+        _loadTimeline(_timelineSpaceId!);
+      }
+      if (_activeTab == 'dashboard') _loadDashboard();
+
+      // Tampilkan In-App Floating Snackbar
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF1E293B),
+          elevation: 6,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          content: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00AAAD).withAlpha(40),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.notifications_active_rounded, color: Color(0xFF00AAAD), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      payload.title.isNotEmpty ? payload.title : 'Notifikasi NexSphere',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      payload.message,
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          action: payload.taskId != null
+              ? SnackBarAction(
+                  label: 'Buka',
+                  textColor: const Color(0xFF00AAAD),
+                  onPressed: () {
+                    TaskDetailModal.show(
+                      context,
+                      taskId: payload.taskId!,
+                      kanbanRepo: widget.kanbanRepo,
+                      currentUser: _currentUser,
+                      onTaskUpdated: () {
+                        if (_activeTab == 'my_tasks') _loadMyTasks();
+                        if (_activeTab == 'timeline' && _timelineSpaceId != null) {
+                          _loadTimeline(_timelineSpaceId!);
+                        }
+                      },
+                    );
+                  },
+                )
+              : null,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    });
+
+    // 3. Listener saat notifikasi ditekan untuk membuka task
+    _fcmTapSubscription = FcmService().onOpenedAppStream.listen((payload) {
+      if (!mounted) return;
+      if (payload.taskId != null) {
+        TaskDetailModal.show(
+          context,
+          taskId: payload.taskId!,
+          kanbanRepo: widget.kanbanRepo,
+          currentUser: _currentUser,
+          onTaskUpdated: () {
+            if (_activeTab == 'my_tasks') _loadMyTasks();
+            if (_activeTab == 'timeline' && _timelineSpaceId != null) {
+              _loadTimeline(_timelineSpaceId!);
+            }
+          },
+        );
+      }
+    });
+
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchUnreadNotificationsCount();
+      if (_activeTab == 'my_tasks') _loadMyTasks();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _fcmMessageSubscription?.cancel();
+    _fcmTapSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchUnreadNotificationsCount() async {
@@ -457,6 +545,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           await _loadSpacesForWorkspace(_selectedWorkspace!['id'] as int);
         }
       }
+      _loadDashboard();
+      _loadMyTasks();
     } catch (_) {
       // Handle error gracefully
     } finally {
@@ -537,11 +627,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     }
   }
 
-  void _switchTab(String tab) {
+  void _switchTab(String tab, {bool closeDrawer = false}) {
     setState(() => _activeTab = tab);
-    Navigator.pop(context); // Close Drawer
+    if (closeDrawer && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
     if (tab == 'dashboard') {
       _loadDashboard();
+      _loadMyTasks();
     } else if (tab == 'my_tasks') {
       _loadMyTasks();
     } else if (tab == 'activity_logs') {
@@ -554,6 +647,162 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         _loadTimeline(_timelineSpaceId!);
       }
     }
+  }
+
+  void _showWorkspaceSwitcherSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Pilih Workspace', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  IconButton(
+                    icon: const Icon(Icons.add_business_rounded, color: Color(0xFF00AAAD)),
+                    tooltip: 'Tambah Workspace',
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showCreateWorkspaceDialog();
+                    },
+                  ),
+                ],
+              ),
+              if (_userName != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00AAAD).withAlpha(15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: const Color(0xFF00AAAD),
+                        radius: 16,
+                        child: Text(
+                          _userName!.isNotEmpty ? _userName![0].toUpperCase() : 'U',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_userName!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            if (_userEmail != null)
+                              Text(_userEmail!, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const Divider(),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _workspaces.length,
+                  itemBuilder: (context, idx) {
+                    final ws = _workspaces[idx];
+                    final isCurrent = _selectedWorkspace?['id'] == ws['id'];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: isCurrent ? const Color(0xFF00AAAD) : Colors.grey.withAlpha(40),
+                        child: Icon(
+                          Icons.business_rounded,
+                          color: isCurrent ? Colors.white : Colors.grey.shade700,
+                          size: 18,
+                        ),
+                      ),
+                      title: Text(
+                        ws['name'] as String,
+                        style: TextStyle(
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                          color: isCurrent ? const Color(0xFF00AAAD) : null,
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isCurrent)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 6),
+                              child: Icon(Icons.check_rounded, color: Color(0xFF00AAAD), size: 20),
+                            ),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded, size: 18, color: Colors.grey),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onSelected: (action) {
+                              Navigator.pop(ctx);
+                              if (action == 'edit') {
+                                _showEditWorkspaceDialog(ws['id'] as int, ws['name'] as String);
+                              } else if (action == 'delete') {
+                                _confirmDeleteWorkspace(ws['id'] as int, ws['name'] as String);
+                              }
+                            },
+                            itemBuilder: (popCtx) => [
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit_outlined, size: 16),
+                                    SizedBox(width: 8),
+                                    Text('Ubah Nama', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text('Hapus Workspace', style: TextStyle(fontSize: 12, color: Colors.red)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      onTap: () {
+                        setState(() => _selectedWorkspace = ws);
+                        _loadSpacesForWorkspace(ws['id'] as int);
+                        Navigator.pop(ctx);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ==========================================
@@ -867,6 +1116,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   }
 
   Future<void> _logout() async {
+    final currentToken = FcmService().currentToken;
+    if (currentToken != null) {
+      await FcmService().unregisterDeviceToken(widget.apiClient, currentToken);
+    }
     await widget.apiClient.clearToken();
     if (!mounted) return;
     Navigator.pushReplacement(
@@ -910,19 +1163,133 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     }
   }
 
+  Widget _buildNavItem({
+    required String id,
+    required String label,
+    required IconData icon,
+    required IconData activeIcon,
+    String? badge,
+  }) {
+    final isActive = _activeTab == id;
+    const activeColor = Color(0xFF00AAAD);
+
+    return InkWell(
+      onTap: () => _switchTab(id),
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive ? activeColor.withAlpha(20) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  isActive ? activeIcon : icon,
+                  size: 22,
+                  color: isActive ? activeColor : Colors.grey.shade600,
+                ),
+                if (badge != null && badge != '0')
+                  Positioned(
+                    top: -4,
+                    right: -8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isActive ? activeColor : Colors.grey.shade600,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                      child: Text(
+                        badge,
+                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                color: isActive ? activeColor : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: 16,
+        elevation: 0,
         title: Row(
           children: [
-            Image.asset('assets/images/logo.png', width: 28, height: 28),
+            InkWell(
+              onTap: _showWorkspaceSwitcherSheet,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00AAAD).withAlpha(18),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF00AAAD).withAlpha(45)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 11,
+                      backgroundColor: const Color(0xFF00AAAD),
+                      child: Text(
+                        (_selectedWorkspace?['name'] as String?)?.isNotEmpty ?? false
+                            ? (_selectedWorkspace!['name'] as String)[0].toUpperCase()
+                            : 'W',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 120),
+                      child: Text(
+                        _selectedWorkspace?['name'] as String? ?? 'Workspace',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF00AAAD),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF00AAAD)),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _getAppTitle(),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
               ),
             ),
           ],
@@ -985,158 +1352,52 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, size: 22),
-            tooltip: 'Segarkan data',
-            onPressed: () {
-              if (_activeTab == 'dashboard') {
-                _loadDashboard();
-              } else if (_activeTab == 'timeline') {
-                if (_timelineSpaceId != null) _loadTimeline(_timelineSpaceId!);
-              } else if (_activeTab == 'my_tasks') {
-                _loadMyTasks();
-              } else if (_activeTab == 'activity_logs') {
-                _loadActivityLogs();
-              } else {
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (val) {
+              if (val == 'switch_workspace') {
+                _showWorkspaceSwitcherSheet();
+              } else if (val == 'refresh') {
                 _loadInitialData();
+              } else if (val == 'logout') {
+                _logout();
               }
             },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'switch_workspace',
+                child: Row(
+                  children: [
+                    Icon(Icons.swap_horiz_rounded, size: 18, color: Color(0xFF00AAAD)),
+                    SizedBox(width: 8),
+                    Text('Ganti Workspace', style: TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'refresh',
+                child: Row(
+                  children: [
+                    Icon(Icons.refresh_rounded, size: 18, color: Colors.grey),
+                    SizedBox(width: 8),
+                    Text('Segarkan Data', style: TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout_rounded, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Keluar (Logout)', style: TextStyle(fontSize: 13, color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
-      ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            UserAccountsDrawerHeader(
-              decoration: const BoxDecoration(
-                color: Color(0xFF00AAAD),
-              ),
-              currentAccountPicture: CircleAvatar(
-                backgroundColor: Colors.white,
-                child: Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: Image.asset('assets/images/logo.png'),
-                ),
-              ),
-              accountName: Text(
-                _userName ?? 'Pengguna NexSphere',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              accountEmail: Text(
-                _userEmail ?? 'nexsphere@user.com',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-            if (_selectedWorkspace != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF00AAAD).withAlpha(20),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.business_rounded, size: 16, color: Color(0xFF00AAAD)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _selectedWorkspace!['name'] as String,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF00AAAD),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            const Padding(
-              padding: EdgeInsets.only(left: 16, top: 12, bottom: 4),
-              child: Text(
-                'RINGKASAN & PROYEK',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.dashboard_rounded),
-              title: const Text('Dashboard', style: TextStyle(fontWeight: FontWeight.w600)),
-              selected: _activeTab == 'dashboard',
-              selectedColor: const Color(0xFF00AAAD),
-              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
-              onTap: () => _switchTab('dashboard'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_open_rounded),
-              title: const Text('Spaces & Projects', style: TextStyle(fontWeight: FontWeight.w600)),
-              selected: _activeTab == 'spaces',
-              selectedColor: const Color(0xFF00AAAD),
-              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withAlpha(30),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text('${_spaces.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-              onTap: () => _switchTab('spaces'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.view_timeline_rounded),
-              title: const Text('Timeline Proyek', style: TextStyle(fontWeight: FontWeight.w600)),
-              selected: _activeTab == 'timeline',
-              selectedColor: const Color(0xFF00AAAD),
-              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
-              onTap: () => _switchTab('timeline'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.check_box_outlined),
-              title: const Text('Tugas Saya (My Tasks)', style: TextStyle(fontWeight: FontWeight.w600)),
-              selected: _activeTab == 'my_tasks',
-              selectedColor: const Color(0xFF00AAAD),
-              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
-              onTap: () => _switchTab('my_tasks'),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(left: 16, top: 12, bottom: 4),
-              child: Text(
-                'KOLABORASI',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.history_rounded),
-              title: const Text('Activity Logs', style: TextStyle(fontWeight: FontWeight.w600)),
-              selected: _activeTab == 'activity_logs',
-              selectedColor: const Color(0xFF00AAAD),
-              selectedTileColor: const Color(0xFF00AAAD).withAlpha(20),
-              onTap: () => _switchTab('activity_logs'),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('Pengaturan Server API'),
-              onTap: () {
-                Navigator.pop(context);
-                _showServerSettingsDialog(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout_rounded, color: Colors.red),
-              title: const Text('Keluar (Logout)', style: TextStyle(color: Colors.red)),
-              onTap: () {
-                Navigator.pop(context);
-                _logout();
-              },
-            ),
-          ],
-        ),
       ),
       floatingActionButton: _activeTab == 'spaces'
           ? FloatingActionButton.extended(
@@ -1147,70 +1408,68 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               label: const Text('Buat Space'),
             )
           : null,
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(10),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+          border: Border(
+            top: BorderSide(color: Colors.grey.withAlpha(30)),
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildNavItem(
+                  id: 'dashboard',
+                  label: 'Home',
+                  icon: Icons.dashboard_outlined,
+                  activeIcon: Icons.dashboard_rounded,
+                ),
+                _buildNavItem(
+                  id: 'spaces',
+                  label: 'Spaces',
+                  icon: Icons.folder_outlined,
+                  activeIcon: Icons.folder_rounded,
+                  badge: _spaces.isNotEmpty ? '${_spaces.length}' : null,
+                ),
+                _buildNavItem(
+                  id: 'my_tasks',
+                  label: 'Tugas Saya',
+                  icon: Icons.check_circle_outline_rounded,
+                  activeIcon: Icons.check_circle_rounded,
+                  badge: _myTasks.isNotEmpty
+                      ? '${_myTasks.where((t) => !(t['stage']?['is_done'] ?? false)).length}'
+                      : null,
+                ),
+                _buildNavItem(
+                  id: 'timeline',
+                  label: 'Timeline',
+                  icon: Icons.view_timeline_outlined,
+                  activeIcon: Icons.view_timeline_rounded,
+                ),
+                _buildNavItem(
+                  id: 'activity_logs',
+                  label: 'Aktivitas',
+                  icon: Icons.history_rounded,
+                  activeIcon: Icons.history_rounded,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _buildCurrentContent(),
-    );
-  }
-
-  void _showServerSettingsDialog(BuildContext context) {
-    final serverCtrl = TextEditingController(text: widget.apiClient.dio.options.baseUrl);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Alamat Server API'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Ubah Base URL API jika diperlukan:',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: serverCtrl,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                isDense: true,
-              ),
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Preset Server:\n- Live: https://projectmanagement.nexsphere.web.id/api/v1\n- Emulator: http://10.0.2.2:8000/api/v1',
-              style: TextStyle(fontSize: 11, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              widget.apiClient.setBaseUrl('https://projectmanagement.nexsphere.web.id/api/v1');
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Server di-reset ke Live Produksi')),
-              );
-            },
-            child: const Text('Reset Live'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final newUrl = serverCtrl.text.trim();
-              if (newUrl.isNotEmpty) {
-                widget.apiClient.setBaseUrl(newUrl);
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Server diubah ke: $newUrl')),
-                );
-              }
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1230,7 +1489,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     }
   }
 
-  // 1. DASHBOARD VIEW
+  // 1. DASHBOARD VIEW (MODERN PERSONAL FOCUS + CAROUSEL)
   Widget _buildDashboardView() {
     if (_isDashboardLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -1244,40 +1503,95 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     final actTk = d['activeTasks'] ?? 0;
     final rate = d['completionRate'] ?? 0;
 
+    final activeTasks = _myTasks.where((t) => !(t['stage']?['is_done'] ?? false)).toList();
+
     return RefreshIndicator(
-      onRefresh: _loadDashboard,
+      onRefresh: () async {
+        await _loadDashboard();
+        await _loadMyTasks();
+      },
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          // Completion rate card
+          // Greeting Header
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Halo, ${_userName ?? 'Rekan'} 👋',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Berikut ringkasan fokus dan progres tugasmu:',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Completion Rate Gradient Card
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFF00AAAD), Color(0xFF007A7C)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00AAAD).withAlpha(50),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Tingkat Penyelesaian Proyek',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    const Text(
+                      'Tingkat Penyelesaian Proyek',
+                      style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$compTk / $totalTk Selesai',
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
                     Text(
                       '$rate%',
-                      style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold),
                     ),
+                    const SizedBox(width: 10),
                     Text(
-                      '$compTk / $totalTk Selesai',
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                      rate >= 75
+                          ? 'Hampir Tuntas 🚀'
+                          : (rate >= 40 ? 'Progres Stabil ⚡' : 'Baru Dimulai 🎯'),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -1288,22 +1602,259 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                     value: totalTk > 0 ? compTk / totalTk : 0,
                     backgroundColor: Colors.white24,
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                    minHeight: 8,
+                    minHeight: 7,
                   ),
                 ),
               ],
             ),
           ),
+
+          // Focus: My Tasks (Up Next)
           const SizedBox(height: 20),
-          const Text('Metrik Ringkasan:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.bolt_rounded, size: 18, color: Colors.amber),
+                  SizedBox(width: 6),
+                  Text(
+                    'Fokus Tugas Saya (Up Next)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ],
+              ),
+              TextButton(
+                onPressed: () => _switchTab('my_tasks'),
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                child: const Text('Buka Semua', style: TextStyle(fontSize: 12, color: Color(0xFF00AAAD))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (activeTasks.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.withAlpha(30)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.green.withAlpha(25),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.done_all_rounded, color: Colors.green, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Semua Tugas Beres! 🎉', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        SizedBox(height: 2),
+                        Text('Tidak ada tugas pending untuk akunmu saat ini.', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...activeTasks.take(2).map((t) {
+              final priority = (t['priority'] as String?) ?? 'medium';
+              final pColor = _priorityColor(priority);
+              return Card(
+                elevation: 0.5,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(color: Colors.grey.withAlpha(30)),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () {
+                    TaskDetailModal.show(
+                      context,
+                      taskId: t['id'] as int,
+                      kanbanRepo: widget.kanbanRepo,
+                      currentUser: _currentUser,
+                      onTaskUpdated: () {
+                        _loadDashboard();
+                        _loadMyTasks();
+                      },
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: pColor,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                t['title'] as String,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: pColor.withAlpha(20),
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: Text(
+                                      priority.toUpperCase(),
+                                      style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: pColor),
+                                    ),
+                                  ),
+                                  if (t['due_at'] != null) ...[
+                                    const SizedBox(width: 8),
+                                    Icon(Icons.calendar_today_outlined, size: 11, color: Colors.grey.shade600),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      t['due_at'] as String,
+                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+          // Spaces Horizontal Carousel
+          const SizedBox(height: 18),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Proyek Aktif (Spaces)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              TextButton(
+                onPressed: () => _switchTab('spaces'),
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                child: const Text('Buka Spaces', style: TextStyle(fontSize: 12, color: Color(0xFF00AAAD))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 105,
+            child: _spaces.isEmpty
+                ? Center(
+                    child: Text(
+                      'Belum ada space proyek aktif.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _spaces.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (ctx, idx) {
+                      final sp = _spaces[idx];
+                      final name = sp['name'] as String;
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => KanbanBoardScreen(
+                                spaceId: sp['id'] as int,
+                                spaceName: name,
+                                kanbanRepo: widget.kanbanRepo,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 155,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.grey.withAlpha(35)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Container(
+                                    width: 32,
+                                    height: 32,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF00AAAD).withAlpha(25),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(Icons.folder_rounded, color: Color(0xFF00AAAD), size: 18),
+                                  ),
+                                  const Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.grey),
+                                ],
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Buka Kanban',
+                                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          // Stat Cards Grid
+          const SizedBox(height: 22),
+          const Text('Metrik Ringkasan:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 10),
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.4,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1.45,
             children: [
               _buildStatCard('Total Workspaces', '$totalWs', Icons.business_rounded, const Color(0xFF00AAAD)),
               _buildStatCard('Total Spaces', '$totalSp', Icons.folder_open_rounded, Colors.indigo),
@@ -1311,46 +1862,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               _buildStatCard('Tugas Selesai', '$compTk', Icons.check_circle_rounded, Colors.green),
             ],
           ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Spaces Cepat:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              TextButton(
-                onPressed: () => _switchTab('spaces'),
-                child: const Text('Lihat Semua'),
-              ),
-            ],
-          ),
-          ..._spaces.take(3).map((sp) {
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00AAAD).withAlpha(25),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.folder_rounded, color: Color(0xFF00AAAD), size: 20),
-              ),
-              title: Text(sp['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              subtitle: Text(sp['description'] as String? ?? 'Space proyek', maxLines: 1, overflow: TextOverflow.ellipsis),
-              trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => KanbanBoardScreen(
-                      spaceId: sp['id'] as int,
-                      spaceName: sp['name'] as String,
-                      kanbanRepo: widget.kanbanRepo,
-                    ),
-                  ),
-                );
-              },
-            );
-          }),
+          const SizedBox(height: 20),
         ],
       ),
     );
@@ -1389,87 +1901,95 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     return RefreshIndicator(
       onRefresh: _loadInitialData,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          // Workspace header with CRUD controls
-          Row(
-            children: [
-              const Text('Workspace:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.add_business_rounded, size: 20, color: Color(0xFF00AAAD)),
-                tooltip: 'Buat Workspace Baru',
-                onPressed: _showCreateWorkspaceDialog,
-              ),
-              if (_selectedWorkspace != null) ...[
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 18, color: Colors.grey),
-                  tooltip: 'Ubah Nama Workspace',
-                  onPressed: () => _showEditWorkspaceDialog(
-                    _selectedWorkspace!['id'] as int,
-                    _selectedWorkspace!['name'] as String,
+          // Active Workspace Banner
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.withAlpha(30)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00AAAD).withAlpha(20),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.business_rounded, size: 16, color: Color(0xFF00AAAD)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Workspace Aktif', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w500)),
+                      Text(
+                        _selectedWorkspace?['name'] as String? ?? 'Workspace',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
-                  tooltip: 'Hapus Workspace',
-                  onPressed: () => _confirmDeleteWorkspace(
-                    _selectedWorkspace!['id'] as int,
-                    _selectedWorkspace!['name'] as String,
-                  ),
+                TextButton(
+                  onPressed: _showWorkspaceSwitcherSheet,
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  child: const Text('Ganti', style: TextStyle(fontSize: 12, color: Color(0xFF00AAAD), fontWeight: FontWeight.bold)),
                 ),
               ],
-            ],
-          ),
-          const SizedBox(height: 4),
-          if (_workspaces.isNotEmpty)
-            DropdownButtonFormField<int>(
-              initialValue: _selectedWorkspace?['id'] as int?,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              ),
-              items: _workspaces.map((w) {
-                return DropdownMenuItem<int>(
-                  value: w['id'] as int,
-                  child: Text(w['name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
-                );
-              }).toList(),
-              onChanged: (id) {
-                if (id != null) {
-                  final selected = _workspaces.firstWhere((w) => w['id'] == id);
-                  setState(() => _selectedWorkspace = selected);
-                  _loadSpacesForWorkspace(id);
-                }
-              },
             ),
-          const SizedBox(height: 20),
+          ),
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Daftar Space Proyek:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              TextButton.icon(
+              Text(
+                'Daftar Space Proyek (${_spaces.length})',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              ElevatedButton.icon(
                 onPressed: _showCreateSpaceDialog,
                 icon: const Icon(Icons.add_rounded, size: 16),
                 label: const Text('Tambah Space', style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: const Color(0xFF00AAAD),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
           if (_spaces.isEmpty)
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(28),
               alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.withAlpha(30)),
+              ),
               child: Column(
                 children: [
                   const Icon(Icons.folder_open_rounded, size: 48, color: Colors.grey),
                   const SizedBox(height: 8),
                   const Text('Belum ada Space proyek di workspace ini.', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   ElevatedButton.icon(
                     onPressed: _showCreateSpaceDialog,
                     icon: const Icon(Icons.add),
                     label: const Text('Buat Space Pertama'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00AAAD),
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ],
               ),
@@ -1477,128 +1997,148 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           else
             ..._spaces.map((sp) {
               return Card(
-                elevation: 0,
+                elevation: 0.5,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(color: Colors.grey.withAlpha(40)),
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: Colors.grey.withAlpha(35)),
                 ),
                 margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00AAAD).withAlpha(30),
-                          borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => KanbanBoardScreen(
+                          spaceId: sp['id'] as int,
+                          spaceName: sp['name'] as String,
+                          kanbanRepo: widget.kanbanRepo,
                         ),
-                        child: const Icon(Icons.view_kanban_rounded, color: Color(0xFF00AAAD), size: 24),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => KanbanBoardScreen(
-                                  spaceId: sp['id'] as int,
-                                  spaceName: sp['name'] as String,
-                                  kanbanRepo: widget.kanbanRepo,
-                                ),
-                              ),
-                            );
-                          },
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00AAAD).withAlpha(25),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.view_kanban_rounded, color: Color(0xFF00AAAD), size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                sp['name'] as String,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      sp['name'] as String,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withAlpha(20),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      'Aktif',
+                                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.green),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 3),
                               Text(
                                 sp['description'] as String? ?? 'Space proyek tim',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                      PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert_rounded, size: 20, color: Colors.grey),
-                        onSelected: (val) {
-                          if (val == 'kanban') {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => KanbanBoardScreen(
-                                  spaceId: sp['id'] as int,
-                                  spaceName: sp['name'] as String,
-                                  kanbanRepo: widget.kanbanRepo,
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert_rounded, size: 20, color: Colors.grey),
+                          onSelected: (val) {
+                            if (val == 'kanban') {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => KanbanBoardScreen(
+                                    spaceId: sp['id'] as int,
+                                    spaceName: sp['name'] as String,
+                                    kanbanRepo: widget.kanbanRepo,
+                                  ),
                                 ),
+                              );
+                            } else if (val == 'timeline') {
+                              setState(() {
+                                _timelineSpaceId = sp['id'] as int;
+                                _activeTab = 'timeline';
+                              });
+                              _loadTimeline(sp['id'] as int);
+                            } else if (val == 'edit') {
+                              _showEditSpaceDialog(sp as Map<String, dynamic>);
+                            } else if (val == 'delete') {
+                              _confirmDeleteSpace(sp['id'] as int, sp['name'] as String);
+                            }
+                          },
+                          itemBuilder: (ctx) => [
+                            const PopupMenuItem(
+                              value: 'kanban',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.view_kanban_rounded, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Papan Kanban'),
+                                ],
                               ),
-                            );
-                          } else if (val == 'timeline') {
-                            setState(() {
-                              _timelineSpaceId = sp['id'] as int;
-                              _activeTab = 'timeline';
-                            });
-                            _loadTimeline(sp['id'] as int);
-                          } else if (val == 'edit') {
-                            _showEditSpaceDialog(sp as Map<String, dynamic>);
-                          } else if (val == 'delete') {
-                            _confirmDeleteSpace(sp['id'] as int, sp['name'] as String);
-                          }
-                        },
-                        itemBuilder: (ctx) => [
-                          const PopupMenuItem(
-                            value: 'kanban',
-                            child: Row(
-                              children: [
-                                Icon(Icons.view_kanban_rounded, size: 18),
-                                SizedBox(width: 8),
-                                Text('Papan Kanban'),
-                              ],
                             ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'timeline',
-                            child: Row(
-                              children: [
-                                Icon(Icons.view_timeline_rounded, size: 18),
-                                SizedBox(width: 8),
-                                Text('Timeline Proyek'),
-                              ],
+                            const PopupMenuItem(
+                              value: 'timeline',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.view_timeline_rounded, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Timeline Proyek'),
+                                ],
+                              ),
                             ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Row(
-                              children: [
-                                Icon(Icons.edit_outlined, size: 18),
-                                SizedBox(width: 8),
-                                Text('Ubah Space'),
-                              ],
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit_outlined, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Ubah Space'),
+                                ],
+                              ),
                             ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
-                                SizedBox(width: 8),
-                                Text('Hapus Space', style: TextStyle(color: Colors.red)),
-                              ],
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                                  SizedBox(width: 8),
+                                  Text('Hapus Space', style: TextStyle(color: Colors.red)),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -1820,6 +2360,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final totalCount = _myTasks.length;
+    final activeCount = _myTasks.where((t) => !(t['stage']?['is_done'] ?? false)).length;
+    final completedCount = _myTasks.where((t) => (t['stage']?['is_done'] ?? false)).length;
+
     final filtered = _myTasks.where((t) {
       final isDone = t['stage']?['is_done'] as bool? ?? false;
       if (_myTasksFilter == 'completed') return isDone;
@@ -1839,20 +2383,35 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           child: Row(
             children: [
               ChoiceChip(
-                label: const Text('Semua', style: TextStyle(fontSize: 11)),
+                label: Text('Semua ($totalCount)', style: const TextStyle(fontSize: 11)),
                 selected: _myTasksFilter == 'all',
+                selectedColor: const Color(0xFF00AAAD),
+                labelStyle: TextStyle(
+                  color: _myTasksFilter == 'all' ? Colors.white : null,
+                  fontWeight: _myTasksFilter == 'all' ? FontWeight.bold : null,
+                ),
                 onSelected: (_) => setState(() => _myTasksFilter = 'all'),
               ),
               const SizedBox(width: 8),
               ChoiceChip(
-                label: const Text('Aktif', style: TextStyle(fontSize: 11)),
+                label: Text('Aktif ($activeCount)', style: const TextStyle(fontSize: 11)),
                 selected: _myTasksFilter == 'active',
+                selectedColor: const Color(0xFF00AAAD),
+                labelStyle: TextStyle(
+                  color: _myTasksFilter == 'active' ? Colors.white : null,
+                  fontWeight: _myTasksFilter == 'active' ? FontWeight.bold : null,
+                ),
                 onSelected: (_) => setState(() => _myTasksFilter = 'active'),
               ),
               const SizedBox(width: 8),
               ChoiceChip(
-                label: const Text('Selesai', style: TextStyle(fontSize: 11)),
+                label: Text('Selesai ($completedCount)', style: const TextStyle(fontSize: 11)),
                 selected: _myTasksFilter == 'completed',
+                selectedColor: const Color(0xFF00AAAD),
+                labelStyle: TextStyle(
+                  color: _myTasksFilter == 'completed' ? Colors.white : null,
+                  fontWeight: _myTasksFilter == 'completed' ? FontWeight.bold : null,
+                ),
                 onSelected: (_) => setState(() => _myTasksFilter = 'completed'),
               ),
             ],
@@ -1872,6 +2431,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                         onPressed: _loadMyTasks,
                         icon: const Icon(Icons.refresh_rounded, size: 16),
                         label: const Text('Muat Ulang'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF00AAAD),
+                          foregroundColor: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -1879,7 +2442,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               : RefreshIndicator(
                   onRefresh: _loadMyTasks,
                   child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     itemCount: filtered.length,
                     itemBuilder: (ctx, idx) {
                       final t = filtered[idx];
@@ -1887,12 +2450,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       final pColor = _priorityColor(priority);
                       final stageName = t['stage']?['name'] as String? ?? 'Tahapan';
                       final isDone = t['stage']?['is_done'] as bool? ?? false;
-
                       final taskId = t['id'] as int;
 
                       return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        elevation: 0,
+                        margin: const EdgeInsets.only(bottom: 10),
+                        elevation: 0.5,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                           side: BorderSide(color: Colors.grey.withAlpha(35)),
@@ -1909,86 +2471,105 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                             );
                           },
                           child: Padding(
-                            padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: pColor.withAlpha(25),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      priority.toUpperCase(),
-                                      style: TextStyle(color: pColor, fontSize: 10, fontWeight: FontWeight.bold),
-                                    ),
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2, right: 10),
+                                  child: Icon(
+                                    isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                                    color: isDone ? Colors.green : Colors.grey.shade400,
+                                    size: 20,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: (isDone ? Colors.green : Colors.grey).withAlpha(25),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      stageName,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: isDone ? Colors.green : null,
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: pColor.withAlpha(25),
+                                              borderRadius: BorderRadius.circular(5),
+                                            ),
+                                            child: Text(
+                                              priority.toUpperCase(),
+                                              style: TextStyle(color: pColor, fontSize: 9, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: (isDone ? Colors.green : Colors.grey).withAlpha(20),
+                                              borderRadius: BorderRadius.circular(5),
+                                            ),
+                                            child: Text(
+                                              stageName,
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w600,
+                                                color: isDone ? Colors.green : null,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        t['title'] as String,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          decoration: isDone ? TextDecoration.lineThrough : null,
+                                          color: isDone ? Colors.grey : null,
+                                        ),
+                                      ),
+                                      if (t['description'] != null && (t['description'] as String).isNotEmpty) ...[
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          t['description'] as String,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                        ),
+                                      ],
+                                      if (t['due_at'] != null || (t['checklists_count'] != null && (t['checklists_count'] as int) > 0)) ...[
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            if (t['checklists_count'] != null && (t['checklists_count'] as int) > 0) ...[
+                                              const Icon(Icons.check_box_outlined, size: 12, color: Colors.grey),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                '${t['completed_checklists_count'] ?? 0}/${t['checklists_count']}',
+                                                style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                              ),
+                                              const SizedBox(width: 10),
+                                            ],
+                                            if (t['due_at'] != null) ...[
+                                              const Icon(Icons.calendar_today_outlined, size: 11, color: Colors.grey),
+                                              const SizedBox(width: 3),
+                                              Text(
+                                                t['due_at'] as String,
+                                                style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ],
+                                    ],
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                t['title'] as String,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  decoration: isDone ? TextDecoration.lineThrough : null,
                                 ),
-                              ),
-                              if (t['description'] != null && (t['description'] as String).isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  t['description'] as String,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                ),
+                                const Icon(Icons.chevron_right_rounded, size: 16, color: Colors.grey),
                               ],
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  if (t['due_at'] != null) ...[
-                                    const Icon(Icons.calendar_today_outlined, size: 12, color: Colors.grey),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      t['due_at'] as String,
-                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                    ),
-                                    const SizedBox(width: 12),
-                                  ],
-                                  if (t['checklists_count'] != null && (t['checklists_count'] as int) > 0) ...[
-                                    const Icon(Icons.check_box_outlined, size: 13, color: Colors.grey),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${t['completed_checklists_count'] ?? 0}/${t['checklists_count']}',
-                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
+                      );
                     },
                   ),
                 ),
@@ -2016,6 +2597,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               onPressed: _loadActivityLogs,
               icon: const Icon(Icons.refresh_rounded, size: 16),
               label: const Text('Muat Ulang'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00AAAD),
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),
@@ -2024,43 +2609,58 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadActivityLogs,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         itemCount: _activityLogs.length,
-        separatorBuilder: (_, __) => const Divider(height: 16),
         itemBuilder: (ctx, idx) {
           final log = _activityLogs[idx];
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 2),
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00AAAD).withAlpha(20),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.bolt_rounded, size: 18, color: Color(0xFF00AAAD)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      log['description'] as String? ?? 'Aktivitas sistem',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          return Card(
+            elevation: 0.5,
+            margin: const EdgeInsets.only(bottom: 10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: Colors.grey.withAlpha(30)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00AAAD).withAlpha(20),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      log['created_at'] as String? ?? '',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    child: const Icon(Icons.bolt_rounded, size: 18, color: Color(0xFF00AAAD)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          log['description'] as String? ?? 'Aktivitas sistem',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.access_time_rounded, size: 11, color: Colors.grey.shade500),
+                            const SizedBox(width: 4),
+                            Text(
+                              log['created_at'] as String? ?? '',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         },
       ),
@@ -2091,6 +2691,8 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
   bool _isLoading = true;
   List<StageModel> _stages = [];
   List<UserModel> _spaceMembers = [];
+  late final PageController _pageController;
+  int _currentPage = 0;
 
   ReverbWebSocketClient? _reverbClient;
   StreamSubscription<ReverbEvent>? _realtimeSubscription;
@@ -2100,6 +2702,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(viewportFraction: 0.88);
     _fetchStages();
     _fetchSpaceMembers();
     _initRealtime();
@@ -2107,6 +2710,7 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
 
   @override
   void dispose() {
+    _pageController.dispose();
     _realtimeSubscription?.cancel();
     _connectionSubscription?.cancel();
     _reverbClient?.disconnect();
@@ -2190,6 +2794,125 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
       stages: _stages,
       spaceMembers: _spaceMembers,
       onTaskUpdated: () => _fetchStages(silent: true),
+    );
+  }
+
+  Future<void> _moveTaskQuick(TaskModel task, int targetStageId) async {
+    if (task.stageId == targetStageId) return;
+    try {
+      await widget.kanbanRepo.moveTask(
+        taskId: task.id,
+        stageId: targetStageId,
+        position: 1,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Status tugas berhasil diperbarui'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      await _fetchStages(silent: true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memindahkan tugas: $e')),
+        );
+      }
+    }
+  }
+
+  void _showSpaceMembersSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Anggota Space (${_spaceMembers.length})',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(),
+              if (_spaceMembers.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      'Tidak ada anggota khusus di space ini (meminjam role workspace).',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                  ),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _spaceMembers.length,
+                    itemBuilder: (ctx, idx) {
+                      final member = _spaceMembers[idx];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: const Color(0xFF00AAAD).withAlpha(40),
+                          child: Text(
+                            member.name.isNotEmpty ? member.name[0].toUpperCase() : '?',
+                            style: const TextStyle(
+                              color: Color(0xFF00AAAD),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        title: Text(member.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(member.email, style: const TextStyle(fontSize: 12)),
+                        trailing: member.role != null
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.withAlpha(30),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  member.role!,
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                ),
+                              )
+                            : null,
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -2352,6 +3075,11 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.people_alt_outlined),
+            tooltip: 'Anggota Space',
+            onPressed: _showSpaceMembersSheet,
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Muat ulang',
             onPressed: () => _fetchStages(),
@@ -2369,156 +3097,254 @@ class _KanbanBoardScreenState extends State<KanbanBoardScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _stages.isEmpty
               ? const Center(child: Text('Tidak ada tahapan kolom di Space ini.'))
-              : ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  itemCount: _stages.length,
-                  itemBuilder: (context, index) {
-                    final stage = _stages[index];
-                    final stageColor = _parseColor(stage.color);
+              : Column(
+                  children: [
+                    // Top Status Segmented Chips Bar
+                    Container(
+                      height: 48,
+                      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _stages.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, idx) {
+                          final stage = _stages[idx];
+                          final isSelected = _currentPage == idx;
+                          final stageColor = _parseColor(stage.color);
 
-                    return Container(
-                      width: 280,
-                      margin: const EdgeInsets.only(right: 12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.withAlpha(35)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Column Header
-                          Padding(
-                            padding: const EdgeInsets.all(14.0),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration: BoxDecoration(color: stageColor, shape: BoxShape.circle),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    stage.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.withAlpha(30),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    '${stage.tasks.length}',
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                IconButton(
-                                  icon: const Icon(Icons.add_rounded, size: 18),
-                                  tooltip: 'Tambah tugas ke kolom ini',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: () => _showCreateTaskDialog(preselectedStageId: stage.id),
-                                ),
-                              ],
+                          return ChoiceChip(
+                            showCheckmark: false,
+                            avatar: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: stageColor,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                          const Divider(height: 1),
-                          // Task Cards List
-                          Expanded(
-                            child: stage.tasks.isEmpty
-                                ? Center(
-                                    child: Text(
-                                      'Belum ada tugas',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey.withAlpha(150)),
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    padding: const EdgeInsets.all(10),
-                                    itemCount: stage.tasks.length,
-                                    itemBuilder: (ctx, tIdx) {
-                                      final task = stage.tasks[tIdx];
-                                      return Card(
-                                        elevation: 0.5,
-                                        margin: const EdgeInsets.only(bottom: 8),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                          side: BorderSide(color: Colors.grey.withAlpha(30)),
+                            label: Text(
+                              '${stage.name} (${stage.tasks.length})',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                color: isSelected ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color,
+                              ),
+                            ),
+                            selected: isSelected,
+                            selectedColor: const Color(0xFF00AAAD),
+                            backgroundColor: Theme.of(context).cardColor,
+                            side: BorderSide(
+                              color: isSelected
+                                  ? const Color(0xFF00AAAD)
+                                  : Colors.grey.withAlpha(50),
+                            ),
+                            onSelected: (selected) {
+                              if (selected) {
+                                setState(() => _currentPage = idx);
+                                _pageController.animateToPage(
+                                  idx,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeInOutCubic,
+                                );
+                              }
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    // Kanban PageView Columns
+                    Expanded(
+                      child: PageView.builder(
+                        controller: _pageController,
+                        onPageChanged: (page) {
+                          setState(() => _currentPage = page);
+                        },
+                        itemCount: _stages.length,
+                        itemBuilder: (context, index) {
+                          final stage = _stages[index];
+                          final stageColor = _parseColor(stage.color);
+
+                          return Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).cardColor,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey.withAlpha(35)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // Column Header
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: BoxDecoration(color: stageColor, shape: BoxShape.circle),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          stage.name,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                                         ),
-                                        child: InkWell(
-                                          borderRadius: BorderRadius.circular(12),
-                                          onTap: () => _openTaskDetail(task),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(12),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                      decoration: BoxDecoration(
-                                                        color: _priorityColor(task.priority).withAlpha(25),
-                                                        borderRadius: BorderRadius.circular(6),
-                                                      ),
-                                                      child: Text(
-                                                        task.priority.toUpperCase(),
-                                                        style: TextStyle(
-                                                          fontSize: 9,
-                                                          fontWeight: FontWeight.bold,
-                                                          color: _priorityColor(task.priority),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const Icon(Icons.edit_note_rounded, size: 16, color: Colors.grey),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 6),
-                                                Text(
-                                                  task.title,
-                                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                                ),
-                                                if (task.dueAt != null || task.checklistsCount > 0) ...[
-                                                  const SizedBox(height: 8),
-                                                  Row(
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.withAlpha(30),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          '${stage.tasks.length}',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      IconButton(
+                                        icon: const Icon(Icons.add_rounded, size: 20),
+                                        tooltip: 'Tambah tugas ke kolom ini',
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        onPressed: () => _showCreateTaskDialog(preselectedStageId: stage.id),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                // Task Cards List
+                                Expanded(
+                                  child: stage.tasks.isEmpty
+                                      ? Center(
+                                          child: Text(
+                                            'Belum ada tugas di tahapan ini',
+                                            style: TextStyle(fontSize: 12, color: Colors.grey.withAlpha(150)),
+                                          ),
+                                        )
+                                      : ListView.builder(
+                                          padding: const EdgeInsets.all(10),
+                                          itemCount: stage.tasks.length,
+                                          itemBuilder: (ctx, tIdx) {
+                                            final task = stage.tasks[tIdx];
+                                            return Card(
+                                              elevation: 0.5,
+                                              margin: const EdgeInsets.only(bottom: 8),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                                side: BorderSide(color: Colors.grey.withAlpha(30)),
+                                              ),
+                                              child: InkWell(
+                                                borderRadius: BorderRadius.circular(12),
+                                                onTap: () => _openTaskDetail(task),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(12),
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
-                                                      if (task.checklistsCount > 0) ...[
-                                                        Icon(Icons.check_box_outlined, size: 14, color: Colors.grey.shade600),
-                                                        const SizedBox(width: 4),
-                                                        Text(
-                                                          '${task.completedChecklistsCount}/${task.checklistsCount}',
-                                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                                                        ),
-                                                        const SizedBox(width: 10),
-                                                      ],
-                                                      if (task.dueAt != null) ...[
-                                                        Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey.shade600),
-                                                        const SizedBox(width: 4),
-                                                        Text(
-                                                          task.dueAt!,
-                                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                                      Row(
+                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                        children: [
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                            decoration: BoxDecoration(
+                                                              color: _priorityColor(task.priority).withAlpha(25),
+                                                              borderRadius: BorderRadius.circular(6),
+                                                            ),
+                                                            child: Text(
+                                                              task.priority.toUpperCase(),
+                                                              style: TextStyle(
+                                                                fontSize: 9,
+                                                                fontWeight: FontWeight.bold,
+                                                                color: _priorityColor(task.priority),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              PopupMenuButton<int>(
+                                                                icon: const Icon(Icons.swap_horiz_rounded, size: 18, color: Colors.grey),
+                                                                tooltip: 'Pindahkan Status',
+                                                                padding: EdgeInsets.zero,
+                                                                constraints: const BoxConstraints(),
+                                                                onSelected: (targetStageId) {
+                                                                  _moveTaskQuick(task, targetStageId);
+                                                                },
+                                                                itemBuilder: (popupCtx) {
+                                                                  return _stages
+                                                                      .where((s) => s.id != stage.id)
+                                                                      .map((s) => PopupMenuItem<int>(
+                                                                            value: s.id,
+                                                                            child: Row(
+                                                                              children: [
+                                                                                Container(
+                                                                                  width: 8,
+                                                                                  height: 8,
+                                                                                  decoration: BoxDecoration(
+                                                                                    color: _parseColor(s.color),
+                                                                                    shape: BoxShape.circle,
+                                                                                  ),
+                                                                                ),
+                                                                                const SizedBox(width: 8),
+                                                                                Text('Ke: ${s.name}', style: const TextStyle(fontSize: 13)),
+                                                                              ],
+                                                                            ),
+                                                                          ))
+                                                                      .toList();
+                                                                },
+                                                              ),
+                                                              const SizedBox(width: 8),
+                                                              const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.grey),
+                                                            ],
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 6),
+                                                      Text(
+                                                        task.title,
+                                                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                                      ),
+                                                      if (task.dueAt != null || task.checklistsCount > 0) ...[
+                                                        const SizedBox(height: 8),
+                                                        Row(
+                                                          children: [
+                                                            if (task.checklistsCount > 0) ...[
+                                                              Icon(Icons.check_box_outlined, size: 14, color: Colors.grey.shade600),
+                                                              const SizedBox(width: 4),
+                                                              Text(
+                                                                '${task.completedChecklistsCount}/${task.checklistsCount}',
+                                                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                                              ),
+                                                              const SizedBox(width: 10),
+                                                            ],
+                                                            if (task.dueAt != null) ...[
+                                                              Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey.shade600),
+                                                              const SizedBox(width: 4),
+                                                              Text(
+                                                                task.dueAt!,
+                                                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                                              ),
+                                                            ],
+                                                          ],
                                                         ),
                                                       ],
                                                     ],
                                                   ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
-                                      );
-                                    },
-                                  ),
-                          ),
-                        ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
     );
   }

@@ -47,9 +47,21 @@ const getTaskColor = (task) => {
 
 // Filtered tasks
 const filteredTasks = computed(() => {
+    const q = searchQuery.value.trim().toLowerCase();
     return props.tasks.filter((t) => {
-        const matchesSearch = !searchQuery.value.trim() ||
-            t.title.toLowerCase().includes(searchQuery.value.toLowerCase());
+        let matchesSearch = true;
+        if (q) {
+            const titleMatch = t.title?.toLowerCase().includes(q);
+            const descMatch = t.description?.toLowerCase().includes(q);
+            const priorityMatch = t.priority?.toLowerCase().includes(q);
+            const stageMatch = (t.stage?.name || '')?.toLowerCase().includes(q);
+            const idMatch = String(t.id).includes(q) || `#${t.id}`.includes(q);
+            const assigneeMatch = t.assignees?.some(
+                (a) => a.name?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q)
+            );
+            matchesSearch = !!(titleMatch || descMatch || priorityMatch || stageMatch || idMatch || assigneeMatch);
+        }
+
         const matchesStage = selectedStageFilter.value === 'all' || t.stage_id == selectedStageFilter.value;
         return matchesSearch && matchesStage;
     });
@@ -496,15 +508,24 @@ const nextTime = () => {
                     <option v-for="stg in stages" :key="stg.id" :value="stg.id">{{ stg.name }}</option>
                 </select>
 
-                <!-- Search Input -->
-                <div class="position-relative" style="width: 160px;">
+                <!-- Search Input with Clear Button -->
+                <div class="position-relative" style="min-width: 170px; max-width: 250px;">
                     <input
                         v-model="searchQuery"
                         type="text"
-                        placeholder="Cari task..."
-                        class="form-control form-control-sm rounded-pill ps-4 fs-12 gantt-input"
+                        placeholder="Cari task, assignee, status..."
+                        class="form-control form-control-sm rounded-pill ps-4 pe-4 fs-12 gantt-input"
                     />
                     <i class="ri-search-line position-absolute top-50 start-0 translate-middle-y ms-2 text-muted fs-12"></i>
+                    <button
+                        v-if="searchQuery"
+                        type="button"
+                        class="btn btn-link btn-sm p-0 position-absolute top-50 end-0 translate-middle-y me-2 text-muted text-decoration-none border-0"
+                        @click="searchQuery = ''"
+                        title="Hapus pencarian"
+                    >
+                        <i class="ri-close-circle-fill fs-14"></i>
+                    </button>
                 </div>
             </div>
 
@@ -543,8 +564,13 @@ const nextTime = () => {
             <div class="gantt-left-pane border-end flex-shrink-0" style="width: min(340px, 45vw); min-width: 170px;">
                 <!-- Left Header Row 1 (Matches Month Top Bar: height 32px) -->
                 <div class="gantt-top-header border-bottom px-3 fs-12 fw-bold text-muted d-flex align-items-center justify-content-between">
-                    <span>Daftar Tugas</span>
-                    <span class="badge bg-secondary-subtle text-secondary rounded-pill fs-10">{{ filteredTasks.length }} Task</span>
+                    <div class="d-flex align-items-center gap-1">
+                        <span>Daftar Tugas</span>
+                        <span v-if="searchQuery.trim() || selectedStageFilter !== 'all'" class="text-primary fs-10 fw-normal">(difilter)</span>
+                    </div>
+                    <span class="badge bg-secondary-subtle text-secondary rounded-pill fs-10">
+                        {{ filteredTasks.length }}<template v-if="filteredTasks.length !== tasks.length"> / {{ tasks.length }}</template> Task
+                    </span>
                 </div>
                 <!-- Left Header Row 2 (Matches Scale Columns: height 42px) -->
                 <div class="gantt-table-header d-flex align-items-center justify-content-between px-3 border-bottom text-muted fs-11 fw-bold text-uppercase">
@@ -578,7 +604,17 @@ const nextTime = () => {
                     </div>
 
                     <div v-if="filteredTasks.length === 0" class="p-4 text-center text-muted fs-13">
-                        Tidak ada task yang ditemukan.
+                        <i class="ri-search-line fs-20 d-block mb-1 text-muted opacity-50"></i>
+                        <div class="fw-semibold">Tidak ada task yang cocok</div>
+                        <div class="fs-11 text-muted mt-1">Coba kata kunci lain atau bersihkan filter</div>
+                        <button
+                            v-if="searchQuery || selectedStageFilter !== 'all'"
+                            type="button"
+                            class="btn btn-sm btn-outline-primary rounded-pill mt-2 fs-11 px-3"
+                            @click="searchQuery = ''; selectedStageFilter = 'all'"
+                        >
+                            Reset Filter
+                        </button>
                     </div>
                 </div>
             </div>
@@ -823,6 +859,7 @@ const nextTime = () => {
 
 .gantt-canvas {
     overflow: hidden;
+    min-height: 120px;
 }
 
 .current-col-header {

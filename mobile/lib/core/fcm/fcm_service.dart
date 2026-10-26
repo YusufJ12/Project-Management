@@ -1,7 +1,19 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../constants/api_endpoints.dart';
 import '../network/api_client.dart';
+
+/// Top-level background message handler required by Firebase Messaging
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {}
+}
 
 /// Structured notification payload received from Firebase Cloud Messaging (FCM)
 class FcmNotificationPayload {
@@ -137,26 +149,100 @@ class FcmService {
   Future<void> initialize({
     bool mockMode = false,
     String? initialToken,
+    ApiClient? apiClient,
   }) async {
     _isMockMode = mockMode;
     if (initialToken != null) {
       _currentToken = initialToken;
     }
     _isInitialized = true;
+
+    if (!mockMode) {
+      try {
+        await Firebase.initializeApp();
+
+        FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+        final messaging = FirebaseMessaging.instance;
+        await messaging.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+          provisional: false,
+        );
+
+        // ignore: deprecated_member_use
+        final token = await messaging.getToken();
+        if (token != null) {
+          _currentToken = token;
+          if (apiClient != null) {
+            await registerDeviceToken(apiClient, token);
+          }
+        }
+
+        // ignore: deprecated_member_use
+        messaging.onTokenRefresh.listen((newToken) {
+          _currentToken = newToken;
+          if (apiClient != null) {
+            registerDeviceToken(apiClient, newToken);
+          }
+        });
+
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          handleIncomingMessage({
+            'notification': {
+              'title': message.notification?.title,
+              'body': message.notification?.body,
+            },
+            'data': message.data,
+          });
+        });
+
+        FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+          handleNotificationTapped({
+            'notification': {
+              'title': message.notification?.title,
+              'body': message.notification?.body,
+            },
+            'data': message.data,
+          });
+        });
+
+        final initialMessage = await messaging.getInitialMessage();
+        if (initialMessage != null) {
+          handleNotificationTapped({
+            'notification': {
+              'title': initialMessage.notification?.title,
+              'body': initialMessage.notification?.body,
+            },
+            'data': initialMessage.data,
+          });
+        }
+      } catch (e) {
+        // Fallback gracefully if running without Google Play Services / Firebase configuration
+      }
+    }
+  }
+
+  /// Detect platform device type for backend registration
+  String get _deviceType {
+    if (kIsWeb) return 'web';
+    if (Platform.isIOS) return 'ios';
+    return 'android';
   }
 
   /// Register FCM device token to NexSphere backend
   Future<bool> registerDeviceToken(
     ApiClient apiClient,
     String token, {
-    String deviceType = 'android',
+    String? deviceType,
   }) async {
     try {
       final response = await apiClient.dio.post(
         ApiEndpoints.deviceToken,
         data: {
           'token': token,
-          'device_type': deviceType,
+          'device_type': deviceType ?? _deviceType,
         },
       );
       _currentToken = token;

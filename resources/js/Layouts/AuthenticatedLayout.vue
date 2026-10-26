@@ -280,6 +280,42 @@ const cleanupUserEcho = () => {
     }
 };
 
+// Periodic Fallback Notification Polling (Sync bell counter & in-app alerts in real-time)
+let notificationPollInterval = null;
+
+const pollNotifications = async () => {
+    try {
+        const response = await fetch('/notifications', {
+            headers: {
+                Accept: 'application/json',
+            },
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.unread_count !== undefined) {
+                if (data.unread_count > localUnreadCount.value && data.notifications?.length) {
+                    const latest = data.notifications[0];
+                    if (latest && !latest.read_at && !localNotifications.value.some((n) => String(n.id) === String(latest.id))) {
+                        pushFloatingToast({
+                            id: latest.id,
+                            title: latest.data?.title || 'Notifikasi Baru',
+                            message: latest.data?.message || '',
+                            actor_name: latest.data?.actor_name || 'Rekan Tim',
+                            actor_avatar: latest.data?.actor_avatar || null,
+                            url: latest.data?.url || null,
+                            type: latest.type || 'info',
+                        });
+                    }
+                }
+                localUnreadCount.value = data.unread_count;
+            }
+            if (Array.isArray(data.notifications)) {
+                localNotifications.value = data.notifications;
+            }
+        }
+    } catch (_) {}
+};
+
 // Flash Alerts System
 const activeAlert = ref({
     type: null,
@@ -357,12 +393,14 @@ onMounted(() => {
 
     checkFlash();
     initUserEcho();
+    notificationPollInterval = setInterval(pollNotifications, 20000);
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', handleScroll);
 });
 
 onUnmounted(() => {
     cleanupUserEcho();
+    if (notificationPollInterval) clearInterval(notificationPollInterval);
     if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize);
         window.removeEventListener('scroll', handleScroll);
