@@ -168,11 +168,17 @@ class FcmPushService
                 if ($response->ok()) {
                     $sentCount++;
                 } else {
+                    $resJson = $response->json();
                     Log::warning('FcmPushService: FCM v1 token send returned error', [
                         'token_preview' => substr($token, 0, 10) . '...',
                         'status' => $response->status(),
-                        'response' => $response->json(),
+                        'response' => $resJson,
                     ]);
+
+                    // Clean up stale or unregistered tokens automatically
+                    if ($response->status() === 404 || ($resJson['error']['status'] ?? '') === 'NOT_FOUND') {
+                        UserDeviceToken::where('token', $token)->delete();
+                    }
                 }
             } catch (\Throwable $e) {
                 Log::warning('FcmPushService: FCM v1 dispatch exception: ' . $e->getMessage());
