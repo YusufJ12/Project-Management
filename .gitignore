@@ -31,4 +31,5 @@ deploy_key*
 *.pub
 google-services.json
 *firebase*.json
+*firebase_options.dart
 /storage/app/firebase/*

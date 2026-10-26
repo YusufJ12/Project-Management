@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -159,29 +159,35 @@ class FcmService {
 
     if (!mockMode) {
       try {
-        await Firebase.initializeApp();
+        if (Firebase.apps.isEmpty) {
+          await Firebase.initializeApp();
+        }
 
         FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
         final messaging = FirebaseMessaging.instance;
-        await messaging.requestPermission(
+        final settings = await messaging.requestPermission(
           alert: true,
           badge: true,
           sound: true,
           provisional: false,
         );
+        debugPrint('[FCM] Permission status: ${settings.authorizationStatus}');
 
         // ignore: deprecated_member_use
         final token = await messaging.getToken();
+        debugPrint('[FCM] Token retrieved: $token');
         if (token != null) {
           _currentToken = token;
           if (apiClient != null) {
-            await registerDeviceToken(apiClient, token);
+            final regSuccess = await registerDeviceToken(apiClient, token);
+            debugPrint('[FCM] registerDeviceToken result: $regSuccess');
           }
         }
 
         // ignore: deprecated_member_use
         messaging.onTokenRefresh.listen((newToken) {
+          debugPrint('[FCM] Token refreshed: $newToken');
           _currentToken = newToken;
           if (apiClient != null) {
             registerDeviceToken(apiClient, newToken);
@@ -189,6 +195,7 @@ class FcmService {
         });
 
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          debugPrint('[FCM] Foreground message received: ${message.messageId}');
           handleIncomingMessage({
             'notification': {
               'title': message.notification?.title,
@@ -199,6 +206,7 @@ class FcmService {
         });
 
         FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+          debugPrint('[FCM] Notification tapped in background: ${message.messageId}');
           handleNotificationTapped({
             'notification': {
               'title': message.notification?.title,
@@ -210,6 +218,7 @@ class FcmService {
 
         final initialMessage = await messaging.getInitialMessage();
         if (initialMessage != null) {
+          debugPrint('[FCM] Initial message on launch: ${initialMessage.messageId}');
           handleNotificationTapped({
             'notification': {
               'title': initialMessage.notification?.title,
@@ -218,8 +227,8 @@ class FcmService {
             'data': initialMessage.data,
           });
         }
-      } catch (e) {
-        // Fallback gracefully if running without Google Play Services / Firebase configuration
+      } catch (e, stack) {
+        debugPrint('[FCM] Initialization warning/error: $e\n$stack');
       }
     }
   }

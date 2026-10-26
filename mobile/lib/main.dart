@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'core/constants/api_endpoints.dart';
 import 'core/fcm/fcm_service.dart';
 import 'core/network/api_client.dart';
@@ -12,8 +13,15 @@ import 'features/kanban/repositories/kanban_repository.dart';
 import 'features/notifications/presentation/notifications_sheet.dart';
 import 'features/tasks/presentation/task_detail_modal.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
+  } catch (e) {
+    debugPrint('Firebase.initializeApp warning: $e');
+  }
   runApp(const NexSphereApp());
 }
 
@@ -386,11 +394,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> with WidgetsBindingOb
     _loadInitialData();
   }
 
-  void _initFcmAndNotifications() {
+  Future<void> _initFcmAndNotifications() async {
     // 1. Inisialisasi FCM & Register Token ke Server
     try {
-      FcmService().initialize(apiClient: widget.apiClient);
-    } catch (_) {}
+      await FcmService().initialize(apiClient: widget.apiClient);
+    } catch (e) {
+      debugPrint('[FCM] init in WorkspaceScreen error: $e');
+    }
 
     // 2. Foreground FCM listener (badge increment + sleek in-app banner)
     _fcmMessageSubscription = FcmService().onMessageStream.listen((payload) {

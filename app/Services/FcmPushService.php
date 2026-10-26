@@ -126,22 +126,33 @@ class FcmPushService
 
         $projectId = $serviceAccount['project_id'] ?? config('services.fcm.project_id');
         $endpoint = "https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send";
-        $stringData = array_map(fn ($val) => is_scalar($val) ? (string) $val : json_encode($val), $data);
+
+        $stringData = [];
+        if (! empty($data)) {
+            foreach ($data as $key => $val) {
+                $stringData[(string) $key] = is_scalar($val) ? (string) $val : json_encode($val);
+            }
+        }
 
         $sentCount = 0;
         foreach ($tokens as $token) {
             try {
+                $messagePayload = [
+                    'token' => $token,
+                    'notification' => [
+                        'title' => $title,
+                        'body' => $body,
+                    ],
+                ];
+
+                if (! empty($stringData)) {
+                    $messagePayload['data'] = $stringData;
+                }
+
                 $response = Http::withToken($accessToken)
                     ->timeout(10)
                     ->post($endpoint, [
-                        'message' => [
-                            'token' => $token,
-                            'notification' => [
-                                'title' => $title,
-                                'body' => $body,
-                            ],
-                            'data' => $stringData,
-                        ],
+                        'message' => $messagePayload,
                     ]);
 
                 if ($response->ok()) {
