@@ -131,6 +131,28 @@ class Task extends Model
                     'due_at' => $newDue ? $newDue->toDateString() : null,
                 ]);
 
+                // Catat log aktivitas pergeseran berantai pada dependent task
+                $depSpace = $dependent->list?->space;
+                if ($depSpace) {
+                    $datesSummary = $newStart->format('d M Y') . ($newDue ? ' s/d ' . $newDue->format('d M Y') : '');
+                    ActivityLog::create([
+                        'workspace_id' => $depSpace->workspace_id,
+                        'space_id' => $depSpace->id,
+                        'list_id' => $dependent->list_id,
+                        'actor_id' => \Illuminate\Support\Facades\Auth::id() ?? $dependent->created_by,
+                        'action' => 'timeline_cascaded',
+                        'subject_type' => self::class,
+                        'subject_id' => $dependent->id,
+                        'metadata' => [
+                            'title' => $dependent->title,
+                            'prerequisite_title' => $this->title,
+                            'new_start_date' => $newStart->toDateString(),
+                            'new_due_at' => $newDue ? $newDue->toDateString() : null,
+                            'dates_summary' => $datesSummary,
+                        ],
+                    ]);
+                }
+
                 // Recursively cascade to dependent's dependents
                 $dependent->cascadeTimeline($visited);
             }

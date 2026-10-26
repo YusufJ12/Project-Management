@@ -62,6 +62,15 @@ const getActionBadgeClass = (act) => {
             return 'bg-success-subtle text-success border border-success-subtle';
         case 'task_moved':
             return 'bg-primary-subtle text-primary border border-primary-subtle';
+        case 'timeline_adjusted':
+            return 'bg-info-subtle text-info border border-info-subtle';
+        case 'timeline_cascaded':
+            return 'bg-primary-subtle text-primary border border-primary-subtle';
+        case 'dependency_added':
+        case 'dependency_removed':
+            return 'bg-indigo-subtle text-indigo border border-indigo-subtle';
+        case 'task_deleted':
+            return 'bg-danger-subtle text-danger border border-danger-subtle';
         case 'comment_added':
             return 'bg-info-subtle text-info border border-info-subtle';
         case 'checklist_toggled':
@@ -79,6 +88,15 @@ const getActionIcon = (act) => {
             return 'ri-add-circle-line';
         case 'task_moved':
             return 'ri-drag-move-fill';
+        case 'timeline_adjusted':
+            return 'ri-calendar-event-line';
+        case 'timeline_cascaded':
+            return 'ri-git-merge-line';
+        case 'dependency_added':
+        case 'dependency_removed':
+            return 'ri-links-line';
+        case 'task_deleted':
+            return 'ri-delete-bin-line';
         case 'comment_added':
             return 'ri-chat-3-line';
         case 'checklist_toggled':

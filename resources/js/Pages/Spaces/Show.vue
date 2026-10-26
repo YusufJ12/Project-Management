@@ -2549,7 +2549,20 @@ const filteredTasks = computed(() => {
                                                     <span class="fw-semibold text-body">{{ act.actor?.name || 'Seseorang' }}</span>
                                                     <span class="ms-1">melakukan aksi <code>{{ act.action }}</code></span>
                                                     <div v-if="act.metadata" class="fs-11 text-muted mt-0">
-                                                        <span v-if="act.metadata.new_stage">Pindah ke: <strong>{{ act.metadata.new_stage }}</strong></span>
+                                                        <span v-if="act.action === 'timeline_adjusted' && act.metadata.dates_summary">
+                                                            <i class="ri-calendar-event-line text-info me-1"></i>Timeline diubah: <strong>{{ act.metadata.dates_summary }}</strong>
+                                                        </span>
+                                                        <span v-else-if="act.action === 'timeline_cascaded'">
+                                                            <i class="ri-git-merge-line text-primary me-1"></i>Timeline bergeser otomatis mengikuti prasyarat <strong>{{ act.metadata.prerequisite_title }}</strong>
+                                                            <span v-if="act.metadata.dates_summary"> ({{ act.metadata.dates_summary }})</span>
+                                                        </span>
+                                                        <span v-else-if="act.action === 'dependency_added' && act.metadata.prerequisite_title">
+                                                            <i class="ri-links-line text-indigo me-1"></i>Menautkan dependensi pada tugas: <strong>{{ act.metadata.prerequisite_title }}</strong>
+                                                        </span>
+                                                        <span v-else-if="act.action === 'dependency_removed'">
+                                                            <i class="ri-link-unlink-m text-secondary me-1"></i>Menghapus dependensi tugas
+                                                        </span>
+                                                        <span v-else-if="act.metadata.new_stage">Pindah ke: <strong>{{ act.metadata.new_stage }}</strong></span>
                                                         <span v-else-if="act.metadata.new_priority">Prioritas diubah ke: <strong>{{ act.metadata.new_priority }}</strong></span>
                                                         <span v-else-if="act.metadata.checklist_title">Checklist: {{ act.metadata.checklist_title }}</span>
                                                         <span v-else-if="act.metadata.file_name">Berkas: {{ act.metadata.file_name }}</span>

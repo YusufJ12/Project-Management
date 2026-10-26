@@ -236,7 +236,48 @@ class TaskController extends Controller
 
         // Sync dependencies if provided
         if (isset($validated['dependency_ids'])) {
+            $oldDepIds = $task->dependencies()->pluck('tasks.id')->toArray();
             $task->dependencies()->sync($validated['dependency_ids']);
+            $newDepIds = (array) $validated['dependency_ids'];
+
+            // Catat log penambahan dependensi baru
+            $addedIds = array_diff($newDepIds, $oldDepIds);
+            foreach ($addedIds as $addId) {
+                $prereqTask = Task::find($addId);
+                if ($prereqTask) {
+                    ActivityLog::create([
+                        'workspace_id' => $space->workspace_id,
+                        'space_id' => $space->id,
+                        'list_id' => $task->list_id,
+                        'actor_id' => $user->id,
+                        'action' => 'dependency_added',
+                        'subject_type' => Task::class,
+                        'subject_id' => $task->id,
+                        'metadata' => [
+                            'title' => $task->title,
+                            'prerequisite_title' => $prereqTask->title,
+                        ],
+                    ]);
+                }
+            }
+
+            // Catat log penghapusan dependensi jika ada yang dicopot
+            $removedIds = array_diff($oldDepIds, $newDepIds);
+            if (! empty($removedIds)) {
+                ActivityLog::create([
+                    'workspace_id' => $space->workspace_id,
+                    'space_id' => $space->id,
+                    'list_id' => $task->list_id,
+                    'actor_id' => $user->id,
+                    'action' => 'dependency_removed',
+                    'subject_type' => Task::class,
+                    'subject_id' => $task->id,
+                    'metadata' => [
+                        'title' => $task->title,
+                    ],
+                ]);
+            }
+
             $task->adjustDatesToDependencies();
         }
 
@@ -246,6 +287,25 @@ class TaskController extends Controller
         $newDueAt = $task->due_at ? Carbon::parse($task->due_at)->toDateString() : null;
 
         if ($oldStartDate !== $newStartDate || $oldDueAt !== $newDueAt) {
+            $datesSummary = ($newStartDate ? Carbon::parse($newStartDate)->format('d M Y') : 'Tanpa tgl') . ' s/d ' . ($newDueAt ? Carbon::parse($newDueAt)->format('d M Y') : 'Tanpa tenggat');
+            ActivityLog::create([
+                'workspace_id' => $space->workspace_id,
+                'space_id' => $space->id,
+                'list_id' => $task->list_id,
+                'actor_id' => $user->id,
+                'action' => 'timeline_adjusted',
+                'subject_type' => Task::class,
+                'subject_id' => $task->id,
+                'metadata' => [
+                    'title' => $task->title,
+                    'old_start_date' => $oldStartDate,
+                    'new_start_date' => $newStartDate,
+                    'old_due_at' => $oldDueAt,
+                    'new_due_at' => $newDueAt,
+                    'dates_summary' => $datesSummary,
+                ],
+            ]);
+
             $task->cascadeTimeline();
         }
 
@@ -414,6 +474,20 @@ class TaskController extends Controller
         }
 
         $title = $task->title;
+
+        ActivityLog::create([
+            'workspace_id' => $space->workspace_id,
+            'space_id' => $space->id,
+            'list_id' => $task->list_id,
+            'actor_id' => $user->id,
+            'action' => 'task_deleted',
+            'subject_type' => Task::class,
+            'subject_id' => $task->id,
+            'metadata' => [
+                'title' => $title,
+            ],
+        ]);
+
         $task->delete();
 
         if ($request->wantsJson()) {
