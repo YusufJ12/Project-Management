@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\TaskChecklistToggledEvent;
 use App\Models\ActivityLog;
 use App\Models\Task;
 use App\Models\TaskChecklist;
@@ -9,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class TaskChecklistController extends Controller
 {
@@ -111,6 +113,25 @@ class TaskChecklistController extends Controller
                 'is_completed' => $newCompleted,
             ],
         ]);
+
+        $checklistsCount = $task->checklists()->count();
+        $completedChecklistsCount = $task->checklists()->where('is_completed', true)->count();
+
+        DB::afterCommit(function () use ($space, $task, $checklist, $newCompleted, $checklistsCount, $completedChecklistsCount, $user) {
+            try {
+                broadcast(new TaskChecklistToggledEvent(
+                    $space->id,
+                    $task->id,
+                    $checklist->id,
+                    $newCompleted,
+                    $checklistsCount,
+                    $completedChecklistsCount,
+                    $user
+                ));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
 
         if ($request->wantsJson()) {
             return response()->json([

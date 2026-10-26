@@ -92,15 +92,24 @@ class WorkspaceApiController extends Controller
     {
         $user = $request->user();
 
-        if (! $user->workspaces()->where('workspaces.id', $workspace->id)->exists()) {
+        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $workspace->id)->exists()) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Akses ditolak ke workspace ini.',
             ], 403);
         }
 
+        $isWsOwnerOrAdmin = $user->isSuperAdmin()
+            || $workspace->owner_id === $user->id
+            || $user->hasWorkspaceRole($workspace->id, ['owner', 'admin']);
+
         $spaces = $workspace->spaces()
             ->whereNull('archived_at')
+            ->when(! $isWsOwnerOrAdmin, function ($query) use ($user) {
+                $query->whereHas('members', function ($m) use ($user) {
+                    $m->where('users.id', $user->id);
+                });
+            })
             ->with(['members', 'lists.stages.tasks.stage'])
             ->latest()
             ->get();

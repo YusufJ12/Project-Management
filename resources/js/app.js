@@ -1,6 +1,7 @@
 import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
+import './echo';
 
 createInertiaApp({
     title: (title) => (title ? `${title} - NexSphere Project Management` : 'NexSphere Project Management'),

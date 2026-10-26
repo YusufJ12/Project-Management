@@ -15,8 +15,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     // Public Authentication Endpoints
     Route::prefix('auth')->group(function () {
-        Route::post('/login', [AuthController::class, 'login']);
-        Route::post('/register', [AuthController::class, 'register']);
+        Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+        Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
     });
 
     // Protected Endpoints via Laravel Sanctum
@@ -59,7 +59,13 @@ Route::prefix('v1')->group(function () {
         Route::post('/tasks/{task}/checklists/{checklist}/toggle', [TaskApiController::class, 'toggleChecklist']);
 
         // Comments
-        Route::post('/tasks/{task}/comments', [TaskApiController::class, 'addComment']);
+        Route::post('/tasks/{task}/comments', [TaskApiController::class, 'addComment'])->middleware('throttle:60,1');
+
+        // Task Attachments
+        Route::post('/tasks/{task}/attachments', [\App\Http\Controllers\TaskAttachmentController::class, 'store'])->middleware('throttle:60,1');
+        Route::get('/tasks/{task}/attachments/{attachment}/download', [\App\Http\Controllers\TaskAttachmentController::class, 'download']);
+        Route::get('/tasks/{task}/attachments/{attachment}/preview', [\App\Http\Controllers\TaskAttachmentController::class, 'preview']);
+        Route::delete('/tasks/{task}/attachments/{attachment}', [\App\Http\Controllers\TaskAttachmentController::class, 'destroy']);
 
         // Activity Logs
         Route::get('/activity-logs', [WorkspaceApiController::class, 'activityLogs']);

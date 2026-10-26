@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\SpaceStageChangedEvent;
 use App\Models\TaskList;
 use App\Models\TaskStage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class TaskStageController extends Controller
 {
@@ -89,6 +91,14 @@ class TaskStageController extends Controller
             'position' => $newPosition,
         ]);
 
+        DB::afterCommit(function () use ($space, $list, $stage) {
+            try {
+                broadcast(new SpaceStageChangedEvent($space->id, $list->id, 'created', $stage));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+
         if ($request->wantsJson()) {
             return response()->json([
                 'stage' => $stage->load('tasks'),
@@ -140,6 +150,14 @@ class TaskStageController extends Controller
             'is_done' => $validated['is_done'] ?? $stage->is_done,
         ]);
 
+        DB::afterCommit(function () use ($space, $stage) {
+            try {
+                broadcast(new SpaceStageChangedEvent($space->id, $stage->list_id, 'updated', $stage));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+
         if ($request->wantsJson()) {
             return response()->json([
                 'stage' => $stage,
@@ -189,8 +207,19 @@ class TaskStageController extends Controller
             $stage->tasks()->update(['stage_id' => $fallbackStage->id]);
         }
 
+        $listId = (int) $stage->list_id;
+        $spaceId = (int) $space->id;
+        $stageData = $stage->toArray();
         $name = $stage->name;
         $stage->delete();
+
+        DB::afterCommit(function () use ($spaceId, $listId, $stageData) {
+            try {
+                broadcast(new SpaceStageChangedEvent($spaceId, $listId, 'deleted', $stageData));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
 
         if ($request->wantsJson()) {
             return response()->json([

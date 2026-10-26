@@ -1,81 +1,66 @@
-# 📱 NexSphere Mobile Client (Flutter)
+# NexSphere Mobile Client
 
-Aplikasi mobile resmi **NexSphere Project Management** untuk platform Android & iOS, dibangun menggunakan Flutter dengan arsitektur **Clean Architecture (BLoC & Repository Pattern)** yang terintegrasi secara *real-time* ke backend Laravel 13 melalui RESTful API Laravel Sanctum.
+Flutter client for NexSphere Project Management. It communicates with the Laravel REST API under `/api/v1` using Dio and Sanctum bearer tokens. The current app is an early client implementation; this document describes the files present and does not claim feature parity with the web app, push-based realtime, or a complete BLoC architecture.
 
----
-
-### 📂 Struktur Arsitektur Folder Flutter
+## Current code layout
 
 ```text
-mobile/
-├── lib/
-│   ├── core/
-│   │   ├── constants/
-│   │   │   └── api_endpoints.dart      <-- Konfigurasi Base URL & rute endpoint
-│   │   ├── network/
-│   │   │   └── api_client.dart         <-- Dio HTTP client + Sanctum Bearer Interceptor
-│   │   └── theme/
-│   │       └── app_theme.dart          <-- Tema gelap & terang selaras MasterHub
-│   ├── features/
-│   │   ├── auth/
-│   │   │   ├── models/user_model.dart  <-- Model user
-│   │   │   ├── repositories/           <-- Auth repository (Login, Register, Logout)
-│   │   │   └── bloc/                   <-- State management autentikasi
-│   │   └── kanban/
-│   │       ├── models/
-│   │       │   ├── task_model.dart     <-- Model data task, prioritas, checklist
-│   │       │   └── stage_model.dart    <-- Model tahapan kolom Kanban
-│   │       ├── repositories/
-│   │       │   └── kanban_repository.dart <-- Interaksi API Kanban (Get, Move, Create)
-│   │       └── presentation/           <-- Layar Papan Kanban & Modal Task
-│   └── main.dart
-├── pubspec.yaml
-└── README.md
+lib/
+├── main.dart                         # Main app and current screen flows
+├── core/
+│   ├── constants/api_endpoints.dart  # API base URL and endpoint paths
+│   └── network/api_client.dart       # Dio client and secure token storage
+└── features/
+    ├── auth/models/user_model.dart
+    └── kanban/
+        ├── models/
+        └── repositories/kanban_repository.dart
 ```
 
----
+`flutter_bloc` is a declared dependency, but the presence of the package alone does not mean all features use BLoC. Check the actual feature code before relying on that architecture.
 
-### 🌐 Konfigurasi Alamat API (`api_endpoints.dart`)
+## Requirements
 
-Ubah konstanta `baseUrl` di `lib/core/constants/api_endpoints.dart` sesuai target perangkat uji coba:
+- Flutter SDK compatible with the Dart constraint in `pubspec.yaml` (`>=3.3.0 <4.0.0`).
+- A reachable NexSphere API server and a valid API base URL.
 
-| Target Pengujian | Format Base URL | Keterangan |
-| :--- | :--- | :--- |
-| **Android Emulator** | `http://10.0.2.2:8000/api/v1` | Alamat loopback emulator Android ke host lokal |
-| **iOS Simulator** | `http://localhost:8000/api/v1` | Simulator Mac berbagi localhost dengan backend |
-| **HP Fisik (WiFi Lokal)** | `http://192.168.1.xxx:8000/api/v1` | Pastikan laptop & HP berada di jaringan WiFi sama |
-| **Production Server** | `https://nama-domain-anda.com/api/v1` | Server DomaiNesia Shared Hosting / VPS |
+## Configure the API URL
 
----
+The current default in `lib/core/constants/api_endpoints.dart` points to the NexSphere production domain. For local development, change `ApiEndpoints.baseUrl` to the appropriate URL, including `/api/v1`:
 
-### 🚀 Cara Menjalankan Aplikasi Mobile
+| Target | Example base URL |
+|---|---|
+| Android emulator | `http://10.0.2.2:8000/api/v1` |
+| iOS simulator | `http://127.0.0.1:8000/api/v1` |
+| Physical device on local Wi-Fi | `http://<computer-lan-ip>:8000/api/v1` |
+| Production | `https://<your-domain>/api/v1` |
 
-1. **Pastikan Backend Laravel Berjalan:**
-   ```bash
-   php artisan serve --host=0.0.0.0 --port=8000
-   ```
+Use HTTPS for production. Do not commit private endpoints, credentials, or tokens. If the base URL is moved to build-time configuration in the future, update this guide with the actual mechanism.
 
-2. **Masuk ke Direktori Mobile & Ambil Dependensi:**
-   ```bash
-   cd mobile
-   flutter pub get
-   ```
+## Run locally
 
-3. **Jalankan Aplikasi di Emulator / Perangkat:**
-   ```bash
-   flutter run
-   ```
+From the `mobile` directory:
 
-4. **Kompilasi APK Produksi (Android):**
-   ```bash
-   flutter build apk --release
-   ```
-   *File APK siap pasang akan tersedia di: `build/app/outputs/flutter-apk/app-release.apk`.*
+```sh
+flutter pub get
+flutter run
+```
 
----
+The Laravel backend can be started locally from the repository root with:
 
-### 🔒 Fitur Keamanan Integrasi API
-1. **Bearer Token Storage:** Token autentikasi disimpan di *Keystore (Android)* dan *Keychain (iOS)* menggunakan library `flutter_secure_storage`.
-2. **Auto-Inject Authorization:** Setiap request HTTP secara otomatis disematkan header `Authorization: Bearer <token>` oleh Dio Interceptor.
-3. **Penyelarasan Drag-and-Drop:** Perubahan posisi task pada papan mobile disinkronkan secara atomik via endpoint `POST /api/v1/tasks/{task}/move`.
+```sh
+php artisan serve --host=0.0.0.0 --port=8000
+```
 
+For a release APK:
+
+```sh
+flutter build apk --release
+```
+
+## Authentication and synchronization
+
+- The Dio client reads the Sanctum token from `flutter_secure_storage` and sends it as a bearer token.
+- Logout should revoke the current API token and clear its local secure-storage value; verify both sides when changing authentication behavior.
+- The client uses HTTP requests and manual refresh flows. It does not currently provide WebSocket push synchronization.
+- The API and mobile feature coverage may differ from the web app. Verify endpoint availability and authorization before adding a screen.

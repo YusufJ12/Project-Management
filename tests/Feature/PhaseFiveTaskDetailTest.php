@@ -227,7 +227,7 @@ class PhaseFiveTaskDetailTest extends TestCase
 
     public function test_user_can_upload_download_and_delete_attachments(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $fakeFile = UploadedFile::fake()->create('architecture-spec.pdf', 1024, 'application/pdf');
 
@@ -249,7 +249,7 @@ class PhaseFiveTaskDetailTest extends TestCase
             'original_name' => 'architecture-spec.pdf',
         ]);
 
-        Storage::disk('public')->assertExists($storagePath);
+        Storage::disk('local')->assertExists($storagePath);
 
         // 2. Download file
         $downloadResponse = $this->actingAs($this->user)
@@ -267,7 +267,7 @@ class PhaseFiveTaskDetailTest extends TestCase
             'id' => $attachmentId,
         ]);
 
-        Storage::disk('public')->assertMissing($storagePath);
+        Storage::disk('local')->assertMissing($storagePath);
     }
 
     public function test_unauthorized_user_cannot_access_or_modify_task(): void

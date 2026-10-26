@@ -2,6 +2,12 @@
 
 namespace App\Http\Controllers\Api\v1;
 
+use App\Events\TaskChecklistToggledEvent;
+use App\Events\TaskCommentAddedEvent;
+use App\Events\TaskCreatedEvent;
+use App\Events\TaskDeletedEvent;
+use App\Events\TaskMovedEvent;
+use App\Events\TaskUpdatedEvent;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\TaskChecklistResource;
 use App\Http\Resources\Api\TaskCommentResource;
@@ -31,13 +37,16 @@ class TaskApiController extends Controller
             'due_at' => ['nullable', 'date'],
             'assignee_ids' => ['nullable', 'array'],
             'assignee_ids.*' => ['exists:users,id'],
+            'dependency_ids' => ['nullable', 'array'],
+            'dependency_ids.*' => ['exists:tasks,id'],
         ]);
 
         $user = $request->user();
         $list = TaskList::with('space.workspace')->findOrFail($validated['list_id']);
         $space = $list->space;
+        $workspace = $space->workspace;
 
-        if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
         }
 
@@ -51,7 +60,44 @@ class TaskApiController extends Controller
 
         $stage = TaskStage::where('id', $validated['stage_id'])
             ->where('list_id', $list->id)
-            ->firstOrFail();
+            ->whereHas('list', fn ($q) => $q->where('space_id', $space->id))
+            ->first();
+
+        if (! $stage) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Tahapan (stage) tidak valid atau tidak termasuk dalam Space yang sama.',
+                'errors' => ['stage_id' => ['Tahapan tidak valid atau tidak termasuk dalam Space yang sama.']],
+            ], 422);
+        }
+
+        // Validasi isolasi tenant untuk assignee_ids: harus anggota workspace
+        if (! empty($validated['assignee_ids'])) {
+            $assigneeIds = array_unique($validated['assignee_ids']);
+            $validMembersCount = $workspace ? $workspace->members()->whereIn('users.id', $assigneeIds)->count() : 0;
+            if ($validMembersCount !== count($assigneeIds)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Satu atau lebih assignee bukan anggota dari workspace ini.',
+                    'errors' => ['assignee_ids' => ['Satu atau lebih assignee bukan anggota dari workspace ini.']],
+                ], 422);
+            }
+        }
+
+        // Validasi isolasi tenant untuk dependency_ids: harus task dalam Space yang sama
+        if (! empty($validated['dependency_ids'])) {
+            $depIds = array_unique($validated['dependency_ids']);
+            $validDepsCount = Task::whereIn('id', $depIds)
+                ->whereHas('list', fn ($q) => $q->where('space_id', $space->id))
+                ->count();
+            if ($validDepsCount !== count($depIds)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Satu atau lebih dependensi tidak valid atau berasal dari Space berbeda.',
+                    'errors' => ['dependency_ids' => ['Satu atau lebih dependensi tidak valid atau berasal dari Space berbeda.']],
+                ], 422);
+            }
+        }
 
         $maxPosition = Task::where('list_id', $list->id)
             ->where('stage_id', $stage->id)
@@ -73,6 +119,11 @@ class TaskApiController extends Controller
             $task->assignees()->sync($validated['assignee_ids']);
         }
 
+        if (! empty($validated['dependency_ids'])) {
+            $task->dependencies()->sync($validated['dependency_ids']);
+            $task->adjustDatesToDependencies();
+        }
+
         ActivityLog::create([
             'workspace_id' => $space->workspace_id,
             'space_id' => $space->id,
@@ -89,6 +140,14 @@ class TaskApiController extends Controller
         ]);
 
         $task->load(['stage', 'assignees', 'checklists']);
+
+        DB::afterCommit(function () use ($task, $user, $space) {
+            try {
+                broadcast(new TaskCreatedEvent($task, $user, $space->id));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
 
         return response()->json([
             'status' => 'success',
@@ -158,6 +217,59 @@ class TaskApiController extends Controller
         $oldStartDate = $task->start_date ? Carbon::parse($task->start_date)->toDateString() : null;
         $oldDueAt = $task->due_at ? Carbon::parse($task->due_at)->toDateString() : null;
 
+        // Validasi isolasi tenant untuk stage
+        if (! empty($validated['stage_id'])) {
+            $newStage = TaskStage::where('id', $validated['stage_id'])
+                ->where('list_id', $task->list_id)
+                ->whereHas('list', fn ($q) => $q->where('space_id', $space->id))
+                ->first();
+
+            if (! $newStage) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Tahapan (stage) tidak valid atau tidak termasuk dalam Space ini.',
+                    'errors' => ['stage_id' => ['Tahapan tidak valid atau tidak termasuk dalam Space ini.']],
+                ], 422);
+            }
+        }
+
+        // Validasi isolasi tenant untuk assignee_ids: harus anggota workspace
+        if (isset($validated['assignee_ids'])) {
+            $assigneeIds = array_unique((array) $validated['assignee_ids']);
+            $workspace = $space->workspace;
+            $validMembersCount = $workspace ? $workspace->members()->whereIn('users.id', $assigneeIds)->count() : 0;
+            if ($validMembersCount !== count($assigneeIds)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Satu atau lebih assignee bukan anggota dari workspace ini.',
+                    'errors' => ['assignee_ids' => ['Satu atau lebih assignee bukan anggota dari workspace ini.']],
+                ], 422);
+            }
+        }
+
+        // Validasi isolasi tenant untuk dependency_ids: harus task dalam Space yang sama
+        if (isset($validated['dependency_ids'])) {
+            $depIds = array_unique((array) $validated['dependency_ids']);
+            if (in_array($task->id, $depIds, true)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Task tidak dapat bergantung pada dirinya sendiri.',
+                    'errors' => ['dependency_ids' => ['Task tidak dapat bergantung pada dirinya sendiri.']],
+                ], 422);
+            }
+
+            $validDepsCount = Task::whereIn('id', $depIds)
+                ->whereHas('list', fn ($q) => $q->where('space_id', $space->id))
+                ->count();
+            if ($validDepsCount !== count($depIds)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Satu atau lebih dependensi tidak valid atau berasal dari Space berbeda.',
+                    'errors' => ['dependency_ids' => ['Satu atau lebih dependensi tidak valid atau berasal dari Space berbeda.']],
+                ], 422);
+            }
+        }
+
         $task->update([
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
@@ -193,6 +305,14 @@ class TaskApiController extends Controller
         }
 
         $task->load(['stage', 'assignees', 'checklists']);
+
+        DB::afterCommit(function () use ($task, $user, $space) {
+            try {
+                broadcast(new TaskUpdatedEvent($task, $user, $space->id));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
 
         return response()->json([
             'status' => 'success',
@@ -290,6 +410,14 @@ class TaskApiController extends Controller
 
         $task->load(['stage', 'assignees', 'checklists']);
 
+        DB::afterCommit(function () use ($task, $oldStageId, $newStageId, $newPosition, $user, $space) {
+            try {
+                broadcast(new TaskMovedEvent($task->id, $oldStageId, $newStageId, $newPosition, $task, $user, $space->id));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+
         return response()->json([
             'status' => 'success',
             'message' => 'Task berhasil dipindahkan.',
@@ -315,7 +443,19 @@ class TaskApiController extends Controller
             ], 403);
         }
 
+        $taskId = (int) $task->id;
+        $stageId = (int) $task->stage_id;
+        $spaceId = (int) $space->id;
+
         $task->delete();
+
+        DB::afterCommit(function () use ($spaceId, $taskId, $stageId, $user) {
+            try {
+                broadcast(new TaskDeletedEvent($spaceId, $taskId, $stageId, $user));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
 
         return response()->json([
             'status' => 'success',
@@ -386,6 +526,25 @@ class TaskApiController extends Controller
 
         $checklist->load('completedBy');
 
+        $checklistsCount = $task->checklists()->count();
+        $completedChecklistsCount = $task->checklists()->where('is_completed', true)->count();
+
+        DB::afterCommit(function () use ($space, $task, $checklist, $newStatus, $checklistsCount, $completedChecklistsCount, $user) {
+            try {
+                broadcast(new TaskChecklistToggledEvent(
+                    $space->id,
+                    $task->id,
+                    $checklist->id,
+                    $newStatus,
+                    $checklistsCount,
+                    $completedChecklistsCount,
+                    $user
+                ));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+
         return response()->json([
             'status' => 'success',
             'message' => 'Status checklist diperbarui.',
@@ -417,6 +576,14 @@ class TaskApiController extends Controller
         ]);
 
         $comment->load('user');
+
+        DB::afterCommit(function () use ($space, $task, $comment) {
+            try {
+                broadcast(new TaskCommentAddedEvent($space->id, $task->id, $comment));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
 
         return response()->json([
             'status' => 'success',

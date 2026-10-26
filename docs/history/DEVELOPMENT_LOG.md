@@ -5,7 +5,9 @@ Dokumen ini mencatat seluruh progres eksekusi pengembangan per fase secara terst
 * **Repository:** NexSphere Project Management System
 * **Basis Teknologi:** Laravel 13.x (PHP 8.3) + MasterHub Admin Template (Bootstrap 5, Tailwind CSS v4, Dark/Light Theme)
 * **Target Infrastruktur:** Shared Hosting (DomaiNesia via SSH) $\rightarrow$ VPS (Scale-up)
-* **Rencana Mobile (Flutter):** Diparkir untuk tahap akhir setelah Web MVP stabil dan terverifikasi.
+* **Rencana Mobile (Flutter):** Klien Flutter sudah ada di repository; status catatan fase di bawah ini tidak menggantikan pemeriksaan implementasi terkini.
+
+> **Catatan status (26 Oktober 2026):** File ini adalah log historis, bukan dashboard status langsung. Tanggal, jumlah tes, klaim fase selesai, dan hasil build di bawah mencatat kondisi saat fase tersebut dikerjakan dan belum diverifikasi ulang pada checkout sekarang. Audit kode terkini menemukan bahwa lampiran disimpan pada disk `public`, validasi upload yang terlihat hanya membatasi file dan ukuran maksimum 20 MB (belum ada allowlist MIME), email task selesai dikirim sinkron, web Kanban memakai polling, dan mobile belum menggunakan push realtime. Karena itu, klaim historis “Storage aman”, “realtime”, atau status lulus saat ini tidak boleh dianggap sebagai hasil audit/security saat ini.
 
 ---
 
@@ -18,7 +20,7 @@ Dokumen ini mencatat seluruh progres eksekusi pengembangan per fase secara terst
 | **2** | **Migrasi Database & Model Eloquent (Sesuai ERD)** | ✅ **SELESAI** | 14 Okt 2026 | 11 Tests lulus, Seeder aktif, 0 error |
 | **3** | **Workspace, Space & List Management** | ✅ **SELESAI** | 14 Okt 2026 | 19 Tests lulus, UI Switcher aktif, Vite build 100% |
 | **4** | **Kanban Board (SortableJS) & Task Engine** | ✅ **SELESAI** | 14 Okt 2026 | 5 Tests lulus, SortableJS aktif, Drag-Drop mulus |
-| **5** | **Task Detail (Checklist, Upload File, Komentar, Audit)** | ✅ **SELESAI** | 14 Okt 2026 | 6 Tests lulus, Modal & Subtask aktif, Storage aman |
+| **5** | **Task Detail (Checklist, Upload File, Komentar, Audit)** | ✅ **SELESAI (catatan historis)** | 14 Okt 2026 | 6 tes fase dilaporkan lulus saat itu; keamanan storage perlu audit ulang |
 | **6** | **Dashboard, List View, Notifikasi & Kesiapan Shared Hosting** | ✅ **SELESAI** | 14 Okt 2026 | 6 Tests lulus, List View & Bell aktif, Runbook siap |
 | **7** | **API Sanitization & Integrasi Mobile (Flutter)** | ✅ **SELESAI** | 14 Okt 2026 | 8 Tests lulus, Sanctum API aktif, Client Blueprint siap |
 
@@ -33,15 +35,15 @@ Dokumen ini mencatat seluruh progres eksekusi pengembangan per fase secara terst
   1. Analisis lingkungan hosting DomaiNesia (tersedia SSH, Redis, MultiPHP 8.3, Cron Jobs).
   2. Perumusan arsitektur transisi: Shared Hosting (Pusher Free + MySQL) $\rightarrow$ VPS (Laravel Reverb + Octane) dengan *zero-rewrite* kodingan.
   3. Pembuatan dan penyelarasan dokumen spesifikasi:
-     - 📄 **[PRD.md](PRD.md):** User personas, role matrix (Owner, Manager, Member, Viewer), sitemap, wireframe visual (Dashboard, Kanban, Task Modal), functional & non-functional requirements.
-     - 📊 **[ERD.md](ERD.md):** Skema data hierarki bergaya ClickUp (`Workspace → Space → (Folder) → List → Task`), relasi assignees, checklists, attachments, comments, notifications, activity logs, serta tabel `personal_access_tokens` (Sanctum).
-     - 🚀 **[PROJECT_PLAN.md](PROJECT_PLAN.md):** Kontrak teknis, integrasi template MasterHub, aturan otorisasi/policy, dan roadmap fase pengerjaan.
+     - 📄 **[PRD.md](../product/PRD.md):** User personas, role matrix (Owner, Manager, Member, Viewer), sitemap, wireframe visual (Dashboard, Kanban, Task Modal), functional & non-functional requirements.
+     - 📊 **[ERD.md](../architecture/ERD.md):** Skema data hierarki bergaya ClickUp (`Workspace → Space → (Folder) → List → Task`), relasi assignees, checklists, attachments, comments, notifications, activity logs, serta tabel `personal_access_tokens` (Sanctum).
+     - 🚀 **[PROJECT_PLAN.md](../planning/PROJECT_PLAN.md):** Kontrak teknis, integrasi template MasterHub, aturan otorisasi/policy, dan roadmap fase pengerjaan.
   4. Penyusunan strategi untuk mobile Flutter (diputuskan dikerjakan pada tahap akhir setelah web stabil).
 * **Deliverables:**
-  - `PRD.md`
-  - `ERD.md`
-  - `PROJECT_PLAN.md`
-  - `hasil.md` (ledger ini)
+  - [`PRD.md`](../product/PRD.md)
+  - [`ERD.md`](../architecture/ERD.md)
+  - [`PROJECT_PLAN.md`](../planning/PROJECT_PLAN.md)
+  - `DEVELOPMENT_LOG.md` (ledger historis ini)
 * **Kriteria Selesai (DoD):** Seluruh dokumen telah selaras, tidak ada kontradiksi entitas data, dan lingkungan siap dieksekusi.
 
 ---
@@ -77,7 +79,7 @@ Dokumen ini mencatat seluruh progres eksekusi pengembangan per fase secara terst
 
 ---
 
-### ✅ Fase 2: Migrasi Database & Model Eloquent (Sesuai ERD.md)
+### ✅ Fase 2: Migrasi Database & Model Eloquent (Sesuai ERD)
 * **Status:** SELESAI (*DONE*)
 * **Tanggal:** 14 Oktober 2026
 * **Cakupan Pekerjaan:**
@@ -95,7 +97,7 @@ Dokumen ini mencatat seluruh progres eksekusi pengembangan per fase secara terst
      - `DatabaseSeeder.php` mengisi pengguna, workspace, space, list, 5 stage Kanban, 4 sample task, checklist, dan activity log.
 * **Hasil Pengujian & Verifikasi:**
   - `PhaseTwoDatabaseModelTest.php`: **4/4 tests passed (16 assertions)**.
-* **Kriteria Selesai (DoD):** Skema database selaras [ERD.md](ERD.md), foreign key terproteksi, relasi model aktif, dan seeder berhasil dieksekusi.
+* **Kriteria Selesai (DoD):** Skema database selaras dengan [ERD](../architecture/ERD.md), foreign key terproteksi, relasi model aktif, dan seeder berhasil dieksekusi.
 
 ---
 
@@ -216,7 +218,7 @@ Dokumen ini mencatat seluruh progres eksekusi pengembangan per fase secara terst
      - Ikon lonceng notifikasi di Topbar Header dengan badge indikator jumlah belum dibaca (*Unread Count*).
      - Dropdown menu notifikasi: Menampilkan ringkasan pesan, pembaruan tugas, tombol *Tandai Telah Dibaca*, dan tombol *Tandai Semua Dibaca*.
      - Endpoint API: `GET /notifications`, `POST /notifications/{notification}/read`, `POST /notifications/read-all`.
-  4. **Panduan Operasional Deployment Shared Hosting (`SHARED_HOSTING_GUIDE.md`):**
+  4. **Panduan Operasional Deployment Shared Hosting ([`SHARED_HOSTING_GUIDE.md`](../operations/SHARED_HOSTING_GUIDE.md)):**
      - Panduan teknis lengkap khusus **Shared Hosting DomaiNesia** (cPanel via SSH):
        1. Isolasi keamanan direktori: Memisahkan root kode aplikasi di luar `public_html/`.
        2. Pengaturan MultiPHP 8.3 CLI binary (`/opt/alt/php83/usr/bin/php`).
@@ -313,11 +315,11 @@ Dokumen ini mencatat seluruh progres eksekusi pengembangan per fase secara terst
      - Memastikan aksi **Edit Profil** tersedia secara eksklusif dan rapi pada menu dropdown profil pengguna di header atas.
   4. **Penerapan Border Card pada Header Seluruh Halaman:**
      - Membungkus seluruh judul/header halaman dalam kontainer card terstruktur (`card border border-secondary-subtle shadow-sm rounded-3 mb-4`) agar rapi, berjarak pas, dan selaras dengan layout MasterHub:
-       - [`Dashboard.vue`](resources/js/Pages/Dashboard.vue): Judul metrik, deskripsi, dan tombol aksi (*Semua Spaces* & *Buka Proyek*).
-       - [`Spaces/Index.vue`](resources/js/Pages/Spaces/Index.vue): Judul ruang kerja, badge nama workspace, dan tombol *Buat Space Baru*.
-       - [`Workspaces/Index.vue`](resources/js/Pages/Workspaces/Index.vue): Judul manajemen workspace dan tombol *Buat Workspace Baru*.
-       - [`Profile/Edit.vue`](resources/js/Pages/Profile/Edit.vue): Halaman edit profil lengkap dengan form update nama, email, dan ganti password.
-       - Dibuat komponen terpusat [`PageHeader.vue`](resources/js/Components/PageHeader.vue) untuk konsistensi di masa mendatang.
+       - [`Dashboard.vue`](../../resources/js/Pages/Dashboard.vue): Judul metrik, deskripsi, dan tombol aksi (*Semua Spaces* & *Buka Proyek*).
+       - [`Spaces/Index.vue`](../../resources/js/Pages/Spaces/Index.vue): Judul ruang kerja, badge nama workspace, dan tombol *Buat Space Baru*.
+       - [`Workspaces/Index.vue`](../../resources/js/Pages/Workspaces/Index.vue): Judul manajemen workspace dan tombol *Buat Workspace Baru*.
+       - [`Profile/Edit.vue`](../../resources/js/Pages/Profile/Edit.vue): Halaman edit profil lengkap dengan form update nama, email, dan ganti password.
+       - Dibuat komponen terpusat [`PageHeader.vue`](../../resources/js/Components/PageHeader.vue) untuk konsistensi di masa mendatang.
   5. **Verifikasi:**
      - `npm run build`: Kompilasi sukses 100% (3.19 detik).
      - `php artisan test`: 49/49 tests passed (280 assertions, 100% PASS).
@@ -329,23 +331,50 @@ Dokumen ini mencatat seluruh progres eksekusi pengembangan per fase secara terst
 * **Tanggal:** 14 Oktober 2026
 * **Cakupan Pekerjaan & Fitur:**
   1. **Modul Tugas Saya (My Tasks - `/my-tasks`):**
-     - Controller: [`MyTaskController.php`](app/Http/Controllers/MyTaskController.php) mengambil seluruh tugas yang ditugaskan (*assigned*) ke pengguna aktif.
-     - Tampilan: [`MyTasks/Index.vue`](resources/js/Pages/MyTasks/Index.vue) lengkap dengan 4 kartu metrik (Total Tugas, Sedang Berjalan, Sudah Selesai, Terlambat/Overdue), filter status, filter prioritas, filter tenggat waktu, dan pencarian cepat secara *debounce*.
+     - Controller: [`MyTaskController.php`](../../app/Http/Controllers/MyTaskController.php) mengambil seluruh tugas yang ditugaskan (*assigned*) ke pengguna aktif.
+     - Tampilan: [`MyTasks/Index.vue`](../../resources/js/Pages/MyTasks/Index.vue) lengkap dengan 4 kartu metrik (Total Tugas, Sedang Berjalan, Sudah Selesai, Terlambat/Overdue), filter status, filter prioritas, filter tenggat waktu, dan pencarian cepat secara *debounce*.
      - Navigasi satu klik langsung membuka papan Kanban proyek terkait.
   2. **Modul Riwayat Aktivitas (Activity Logs - `/activity-logs`):**
-     - Controller: [`ActivityLogController.php`](app/Http/Controllers/ActivityLogController.php) menyajikan jejak audit transparan dari aktivitas tim dalam workspace aktif.
-     - Model: [`ActivityLog.php`](app/Models/ActivityLog.php) dilengkapi *accessor* cerdas `description` yang otomatis memformat teks aksi dalam Bahasa Indonesia.
-     - Tampilan: [`ActivityLogs/Index.vue`](resources/js/Pages/ActivityLogs/Index.vue) dengan visual timeline stream, ikon aksi berwarna, link space, filter jenis aksi, dan pagination.
+     - Controller: [`ActivityLogController.php`](../../app/Http/Controllers/ActivityLogController.php) menyajikan jejak audit transparan dari aktivitas tim dalam workspace aktif.
+     - Model: [`ActivityLog.php`](../../app/Models/ActivityLog.php) dilengkapi *accessor* cerdas `description` yang otomatis memformat teks aksi dalam Bahasa Indonesia.
+     - Tampilan: [`ActivityLogs/Index.vue`](../../resources/js/Pages/ActivityLogs/Index.vue) dengan visual timeline stream, ikon aksi berwarna, link space, filter jenis aksi, dan pagination.
   3. **Manajemen Pengguna & Super Admin RBAC (`/users`):**
      - Migrasi: `2026_10_14_000007_add_role_to_users_table.php` menambahkan kolom `role` (`super_admin`, `admin`, `member`) pada tabel `users`.
      - Model User: Ditambahkan helper `isSuperAdmin()`, `isAdmin()`, dan `hasWorkspaceRole()`.
-     - Controller: [`UserController.php`](app/Http/Controllers/UserController.php) dengan proteksi *authorization gate* (hanya Super Admin / Admin yang dapat mengakses).
+     - Controller: [`UserController.php`](../../app/Http/Controllers/UserController.php) dengan proteksi *authorization gate* (hanya Super Admin / Admin yang dapat mengakses).
      - Fitur RBAC:
        - Penetapan/perubahan peran pengguna secara langsung (`super_admin`, `admin`, `member`) dengan proteksi pencegahan *demote* pada Super Admin terakhir.
        - Pendaftaran pengguna baru langsung dari panel admin dan pengaitan ke workspace awal.
        - Penghapusan akun pengguna dengan proteksi akun diri sendiri.
-     - Tampilan: [`Users/Index.vue`](resources/js/Pages/Users/Index.vue) dengan matriks kartu metrik (Total, Super Admin, Admin, Member), badge peran bergaya MasterHub, dan dropdown manajemen peran.
+     - Tampilan: [`Users/Index.vue`](../../resources/js/Pages/Users/Index.vue) dengan matriks kartu metrik (Total, Super Admin, Admin, Member), badge peran bergaya MasterHub, dan dropdown manajemen peran.
      - Menu Sidebar: Ditampilkan bagian **"Administrasi & RBAC"** (`/users`) khusus untuk pengguna dengan hak akses admin/super admin.
   4. **Verifikasi:**
      - `npm run build`: Kompilasi sukses 100% (3.09 detik).
      - `php artisan test`: **57/57 tests passed (341 assertions, 100% PASS)** via `MyTasksAndRbacTest.php`.
+
+---
+
+### ⚡ Fase 8 & 9: Realtime WebSocket Push (Laravel Reverb & Echo), Eliminasi Polling & Penguatan Keamanan Multi-Tenant
+* **Status:** SELESAI (*DONE*)
+* **Tanggal:** 26 Oktober 2026
+* **Cakupan Pekerjaan & Fitur:**
+  1. **Penguatan Otorisasi & Isolasi Multi-Tenant (Security Hardening):**
+     - Pencegahan IDOR pada pembuatan dan update tugas: validasi ketat `assignee_ids` wajib terdaftar di workspace yang sama, dan `dependency_ids` wajib berada dalam space yang sama tanpa dependensi siklus pada diri sendiri.
+     - Penegakan role parity API vs Web: pembatasan aksi destruktif dan pembuatan space hanya untuk Owner/Admin/Space Manager, memblokir role Member biasa dan Viewer dengan `403 Forbidden`.
+     - Migrasi berkas lampiran (`TaskAttachmentController`) ke disk privat `'local'` (`storage/app/tasks/`), pemblokiran ekstensi berbahaya (script/executable) dengan `422`, penyimpanan nama acak UUID, serta streaming terotorisasi dengan header `X-Content-Type-Options: nosniff`.
+     - Penambahan proteksi rate limiting API: `throttle:10,1` pada login & registrasi, `throttle:60,1` pada lampiran & komentar, dan pencabutan token Sanctum saat logout.
+     - Pembungkusan transaksi database (`DB::transaction`) pada pembuatan space untuk integritas data.
+  2. **Infrastruktur Realtime WebSocket Push (Laravel Reverb):**
+     - Instalasi `laravel/reverb` v1.12.0 dan setup konfigurasi broadcasting (`config/broadcasting.php`, `config/reverb.php`, `routes/channels.php`).
+     - Otorisasi channel privat `space.{spaceId}` dan `workspace.{workspaceId}` dengan multi-guard (`web` & `sanctum`).
+     - 9 Domain Event yang mengimplementasikan `ShouldBroadcastNow`: `TaskCreatedEvent`, `TaskUpdatedEvent`, `TaskMovedEvent`, `TaskDeletedEvent`, `TaskChecklistToggledEvent`, `TaskCommentAddedEvent`, `TaskAttachmentUploadedEvent`, `TaskAttachmentDeletedEvent`, `SpaceStageChangedEvent`.
+     - Seluruh event di-dispatch secara aman setelah DB commit (`DB::afterCommit`) dengan penanganan `try-catch` agar kegagalan WebSocket tidak menggagalkan request HTTP.
+  3. **Penyambungan Frontend Laravel Echo & Eliminasi Polling:**
+     - Instalasi `laravel-echo` dan `pusher-js`, inisialisasi di `resources/js/echo.js` dan import global di `app.js`.
+     - **Pembersihan Total Polling:** Seluruh interval polling HTTP (`kanbanPollingInterval` 4s dan `commentsPollingInterval` 3s) di `Show.vue` telah dihapus sepenuhnya (0 sisa `setInterval` di codebase frontend).
+     - Penambahan penanganan event realtime, sinkronisasi Kanban board, deteksi konflik saat modal task diedit bersamaan (*uncommitted edit warning*), auto-close modal saat task dihapus pengguna lain.
+     - Penambahan indikator status koneksi WebSocket visual (Connected pulse, Reconnecting spinner, Offline badge) dengan tombol manual Reconnect.
+  4. **Hasil Pengujian & Verifikasi Kualitas:**
+     - `php artisan test`: **117 passed, 0 failed (590 assertions)** termasuk test suite baru `SecurityAndTenantIsolationTest` dan `RealtimeBroadcastingTest`.
+     - `npm run build`: Kompilasi aset sukses 100% tanpa error/warning.
+

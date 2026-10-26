@@ -10,10 +10,12 @@
 | Target rilis | MVP v1 untuk shared hosting; pengembangan kapasitas berikutnya di VPS |
 | Sasaran kualitas | Skalabel, mudah dirawat, dan andal |
 | Arsitektur web | Laravel + Vue 3 + Inertia |
-| Dokumen teknis | [PROJECT_PLAN.md](PROJECT_PLAN.md) |
-| ERD | [ERD.md](ERD.md) |
+| Dokumen teknis | [PROJECT_PLAN.md](../planning/PROJECT_PLAN.md) |
+| ERD | [ERD.md](../architecture/ERD.md) |
 
-> Dokumen ini menetapkan tujuan produk dan perilaku yang harus terlihat oleh pengguna. Pilihan teknis dan urutan pengerjaan dijelaskan di `PROJECT_PLAN.md`.
+> Dokumen ini menetapkan tujuan produk dan perilaku yang harus terlihat oleh pengguna. Pilihan teknis dan urutan pengerjaan dijelaskan di [PROJECT_PLAN.md](../planning/PROJECT_PLAN.md).
+>
+> **Catatan:** PRD berstatus draft dan menjelaskan kebutuhan/arah produk, bukan daftar fitur yang sudah tersedia. Untuk mengetahui kondisi implementasi saat ini, periksa kode, konfigurasi, dan tes repository.
 
 ## 1. Ringkasan dan tujuan
 

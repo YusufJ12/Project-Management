@@ -1,75 +1,71 @@
-# 🌐 NexSphere Master Hub
-> **Central Control Plane, Tenant Discovery Authority & SaaS Management Platform**  
-> Target Production: `https://masterhub.nexsphere.web.id`
+# NexSphere Project Management
 
----
+NexSphere is a project and task management application with a Laravel web backend, Vue 3/Inertia web interface, and a Flutter mobile client. The backend also exposes a Sanctum-protected REST API under `/api/v1`.
 
-## 📌 Ringkasan Sistem
+## Current stack
 
-**NexSphere Master Hub** adalah pusat kendali dan otoritas penemuan (*Discovery Authority*) tunggal bagi seluruh ekosistem **NexSphere-HRIS** multi-VPS:
+- PHP `^8.3` and Laravel `^13.17` (see `composer.json`).
+- Vue 3, Inertia, and Vite for the web application.
+- Flutter for the mobile client; API requests use Dio and Sanctum bearer tokens.
+- Database queue support is configured, but individual work may still run synchronously. Check the code before assuming a job is queued.
 
-1. **Aplikasi Mobile (Single APK/AAB)**: Tidak pernah menyimpan alamat server VPS klien secara statis. Aplikasi mobile meminta resolusi alamat VPS ke Master Hub berdasarkan `company_code`.
-2. **Web Admin Tenant**: Mengenali konfigurasi tenant secara otomatis melalui domain/subdomain (`domain_frontend`).
-3. **VPS Klien (10+ Node Server Terpisah)**: Secara berkala mengirimkan detak jantung (*Heartbeat & Telemetri*) ke Master Hub via shared secret HMAC (`MASTER_HUB_SECRET`) untuk sinkronisasi lisensi dan pemantauan kesehatan node.
+## Local setup
 
----
+1. Install the PHP/Composer and Node.js versions required by the project.
+2. Install PHP dependencies:
 
-## 📚 Dokumentasi Terkait
+   ```sh
+   composer install
+   ```
 
-- 🛡️ **[Panduan Keamanan, Anti-DDoS, dan Setup Cloudflare](CLOUDFLARE_SECURITY_SETUP.md)**: Konfigurasi lengkap Cloudflare DNS, WAF Bypass untuk jalur API mobile, penanganan Imunify360, dan TrustProxies Laravel.
-- 📋 **[Roadmap & Rencana Peningkatan Sistem](plan_master_hub_laravel.md)**: Detail fase 1 s/d fase 5 implementasi Master Hub.
+3. Create the local environment file and application key if needed:
 
----
+   ```sh
+   cp .env.example .env
+   php artisan key:generate
+   ```
 
-## 🚀 Fitur Utama
+4. Configure a local database in `.env`, then run migrations. Use `--seed` only when you want the development sample data:
 
-- **Discovery Engine Cepat (< 50ms)**: Dilengkapi caching 10 menit dengan auto-eviction saat data tenant diubah.
-- **Otomatisasi Siklus Langganan (Lifecycle Scheduler)**:
-  - H-7 sebelum jatuh tempo: Auto-generate invoice perpanjangan (`INV/YYYY/MM/XXXX`).
-  - Hari H: Transisi otomatis ke masa tenggang (*Grace Period* 7 hari).
-  - H+7: Auto-suspend tenant dan mengunci akses sistem.
-- **Monitoring Kesehatan VPS Node Realtime (3-Status)**:
-  - 🟢 **Online**: Melapor dalam $\le 5$ menit terakhir dengan RAM & CPU normal ($\le 85\%$).
-  - 🟡 **Warning**: Respons 5–15 menit terakhir atau beban RAM/CPU $> 85\%$.
-  - 🔴 **Offline**: Tidak melapor lebih dari 15 menit (memicu alert audit).
-- **Brankas Kredensial & Audit Trail (Kepatuhan UU PDP)**:
-  - Enkripsi AES-256 untuk kredensial root VPS, cPanel, database, dan Cloudflare.
-  - Setiap pembukaan password dan generator `.env` dicatat dalam log audit beserta IP dan User-Agent.
+   ```sh
+   php artisan migrate
+   ```
 
----
+5. Install frontend dependencies and build assets:
 
-## 🛠️ Instalasi & Menjalankan Lokal
+   ```sh
+   npm install
+   npm run build
+   ```
 
-```bash
-# Clone repository
-git clone https://github.com/YusufJ12/NexSphere-Master-Hub.git
-cd NexSphere-Master-Hub
+6. Start the Laravel development server:
 
-# Install dependensi
-composer install
-npm install
+   ```sh
+   php artisan serve
+   ```
 
-# Setup environment
-cp .env.example .env
-php artisan key:generate
+For frontend development with Vite, run `npm run dev` in another terminal.
 
-# Migrasi database dan seeder data awal
-php artisan migrate --seed
+## Mobile client
 
-# Menjalankan aplikasi
-php artisan serve
-```
+See [mobile/README.md](mobile/README.md) for Flutter setup and API base URL configuration. Do not put production secrets or personal access tokens in source control.
 
----
+## Tests
 
-## 🧪 Menjalankan Pengujian (Tests)
+Run the current test suite with:
 
-```bash
+```sh
 php artisan test
 ```
-*Seluruh fitur Master Hub telah terverifikasi dengan 29+ test cases dan 123+ assertions.*
 
----
+Test results depend on the current checkout and environment; historical counts in project notes are not a substitute for running the tests.
 
-## 📄 Lisensi
-Hak Cipta © 2026 NexSphere Teknologi Indonesia.
+## Project documentation
+
+See the [documentation index](docs/README.md) for the folder structure and guidance on interpreting the project documents.
+
+- [Product requirements](docs/product/PRD.md): product scope and requirements; currently a draft for validation.
+- [Project plan](docs/planning/PROJECT_PLAN.md): technical direction and staged roadmap.
+- [ERD](docs/architecture/ERD.md): intended domain model and data relationships.
+- [Shared hosting guide](docs/operations/SHARED_HOSTING_GUIDE.md): deployment checklist; verify provider capabilities and current application configuration before using it.
+- [Development log](docs/history/DEVELOPMENT_LOG.md): historical progress notes, not a live implementation or test-status report.

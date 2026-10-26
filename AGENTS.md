@@ -1,47 +1,21 @@
-<laravel-boost-guidelines>
-# Laravel Application
+# Repository Instructions
 
-This repository contains a Laravel application. Complete the following setup before working on the user's request.
+This repository is the NexSphere Project Management application. Check the current code and configuration before relying on documentation claims.
 
-## Prerequisites
+## Before changing application code
 
-Verify that PHP and Composer are available:
+- Verify `php -v` and `composer -V`. The project requires PHP `^8.3` and Laravel `^13.17` (see `composer.json`). Do not install or upgrade runtimes automatically; report missing prerequisites.
+- Read the relevant application code and tests, and check `git status` before editing. Preserve unrelated user changes.
+- Laravel Boost is already declared in `require-dev`. Do not run `composer require laravel/boost` unless the dependency is actually missing and a dependency change is needed. Do not run `php artisan boost:install` automatically; first inspect whether Boost setup is needed and whether it would replace repository guidance.
+- Do not run production migrations, modify production environment files, or deploy without explicit authorization.
 
-```sh
-php -v
-composer -V
-```
+## Project-specific guidance
 
-If either command is unavailable, detect the user's operating system and install the prerequisites with the appropriate command:
-
-macOS:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/mac/8.5)"
-```
-
-Windows PowerShell:
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://php.new/install/windows/8.5'))
-```
-
-Linux:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/linux/8.5)"
-```
-
-After installation, ask the user to restart their terminal. If the agent needs the restarted shell to continue, ask the user to reopen their terminal and rerun their original prompt.
-
-## Agent Setup
-
-Install Laravel Boost from the application root before making application changes:
-
-```sh
-composer require laravel/boost --dev
-php artisan boost:install
-```
-
-Boost replaces these bootstrap instructions with guidelines tailored to the application. After installation, read `AGENTS.md` again and continue with the user's original request using the generated guidelines.
-</laravel-boost-guidelines>
+- Web: Laravel routes/controllers, Vue 3, and Inertia. Mobile: Flutter using the versioned Sanctum API under `/api/v1`.
+- Keep authorization and tenant scoping on the server. Hiding a control in the UI is not authorization.
+- Check role, workspace/space ownership, and related model scope for every read/write endpoint. Keep web and API rules consistent.
+- Treat uploads as private project data. Verify storage visibility and access checks before changing upload or preview behavior.
+- The web Kanban currently uses periodic HTTP polling. Do not describe it as WebSocket push or true realtime unless that has been implemented and verified.
+- Email completion notifications currently use synchronous mail sending. Queue behavior and deployment support must be verified before changing it.
+- `docs/product/PRD.md`, `docs/planning/PROJECT_PLAN.md`, and `docs/architecture/ERD.md` describe product intent and may contain draft requirements. `docs/history/DEVELOPMENT_LOG.md` contains historical claims. Verify the implementation before treating any document as evidence of current behavior.
+- Do not add dependencies, infrastructure, migrations, or unrelated documentation changes unless needed for the requested task.

@@ -4,12 +4,14 @@
 |---|---|
 | Versi | 1.3 |
 | Status | Draft teknis; validasi hosting dan keputusan produk masih terbuka |
-| Product requirements | [PRD.md](PRD.md) |
-| Entity relationship diagram | [ERD.md](ERD.md) |
+| Product requirements | [PRD.md](../product/PRD.md) |
+| Entity relationship diagram | [ERD.md](../architecture/ERD.md) |
 | Target awal | MVP web untuk tim pilot di shared hosting |
 | Sasaran kualitas | Skalabel, mudah dirawat, andal |
 
 Dokumen ini menerjemahkan kebutuhan PRD menjadi model teknis, fase kerja, dan strategi rilis. Tujuan arsitektur adalah platform kerja modular yang dapat tumbuh bertahap menuju fleksibilitas produk seperti ClickUp; MVP tetap kecil. Jadwal kalender belum ditetapkan karena ukuran tim, kapasitas kerja, dan kondisi hosting belum dikonfirmasi.
+
+> **Catatan:** Ini adalah rencana teknis berstatus draft, bukan catatan implementasi yang selalu mutakhir. Sebelum menjalankan instruksi atau menganggap sebuah fitur sudah ada, verifikasi struktur, konfigurasi, kode, dan tes pada checkout saat ini.
 
 ## 1. Prinsip implementasi
 
@@ -129,7 +131,7 @@ Fitur lanjutan tersebut adalah batas desain untuk evolusi; tabelnya dibuat saat 
 
 ## 5. Rencana fase, hasil, dan definisi selesai
 
-Estimasi waktu diisi setelah kapasitas dan pengalaman tim diketahui. Setiap fase berakhir dengan demo singkat, review terhadap kriteria PRD, serta **wajib dicatat seluruh hasil dan verifikasinya di file [hasil.md](hasil.md)** sebagai rekaman resmi kemajuan proyek.
+Estimasi waktu diisi setelah kapasitas dan pengalaman tim diketahui. Setiap fase berakhir dengan demo singkat, review terhadap kriteria PRD, serta catatan hasil dan verifikasi di [DEVELOPMENT_LOG.md](../history/DEVELOPMENT_LOG.md). Catatan itu bersifat historis dan perlu diperbarui setelah verifikasi baru.
 
 ### Fase 0 — Validasi dan setup
 

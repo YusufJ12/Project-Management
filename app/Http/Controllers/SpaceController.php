@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -127,64 +128,68 @@ class SpaceController extends Controller
             return back()->with('error', 'Silakan pilih Workspace yang valid.');
         }
 
-        $space = Space::create([
-            'workspace_id' => $workspace->id,
-            'name' => $validated['name'],
-            'slug' => Str::slug($validated['name']) . '-' . Str::random(4),
-            'description' => $validated['description'] ?? null,
-            'status' => 'active',
-            'starts_at' => $validated['starts_at'] ?? null,
-            'due_at' => $validated['due_at'] ?? null,
-        ]);
+        $space = DB::transaction(function () use ($workspace, $validated, $user) {
+            $space = Space::create([
+                'workspace_id' => $workspace->id,
+                'name' => $validated['name'],
+                'slug' => Str::slug($validated['name']) . '-' . Str::random(4),
+                'description' => $validated['description'] ?? null,
+                'status' => 'active',
+                'starts_at' => $validated['starts_at'] ?? null,
+                'due_at' => $validated['due_at'] ?? null,
+            ]);
 
-        // Attach creator as manager
-        $space->members()->attach($user->id, [
-            'role' => 'manager',
-            'joined_at' => now(),
-        ]);
+            // Attach creator as manager
+            $space->members()->attach($user->id, [
+                'role' => 'manager',
+                'joined_at' => now(),
+            ]);
 
-        // Masukkan hanya anggota yang dipilih oleh pembuat space (yang valid merupakan anggota workspace tersebut)
-        if (! empty($validated['member_ids'])) {
-            $validMemberIds = $workspace->members()->whereIn('users.id', $validated['member_ids'])->pluck('users.id');
-            foreach ($validMemberIds as $memberId) {
-                if ((int) $memberId !== (int) $user->id) {
-                    $space->members()->syncWithoutDetaching([
-                        $memberId => ['role' => 'member', 'joined_at' => now()],
-                    ]);
+            // Masukkan hanya anggota yang dipilih oleh pembuat space (yang valid merupakan anggota workspace tersebut)
+            if (! empty($validated['member_ids'])) {
+                $validMemberIds = $workspace->members()->whereIn('users.id', $validated['member_ids'])->pluck('users.id');
+                foreach ($validMemberIds as $memberId) {
+                    if ((int) $memberId !== (int) $user->id) {
+                        $space->members()->syncWithoutDetaching([
+                            $memberId => ['role' => 'member', 'joined_at' => now()],
+                        ]);
+                    }
                 }
             }
-        }
+
+            // Create default Task List
+            $list = TaskList::create([
+                'space_id' => $space->id,
+                'name' => 'Main Tasks',
+                'slug' => 'main-tasks',
+                'status' => 'active',
+                'position' => 1,
+            ]);
+
+            // Create default Kanban Stages
+            $defaultStages = [
+                ['name' => 'Backlog', 'color' => '#64748b', 'is_done' => false, 'position' => 1],
+                ['name' => 'To Do', 'color' => '#0284c7', 'is_done' => false, 'position' => 2],
+                ['name' => 'In Progress', 'color' => '#eab308', 'is_done' => false, 'position' => 3],
+                ['name' => 'In Review', 'color' => '#8b5cf6', 'is_done' => false, 'position' => 4],
+                ['name' => 'Done', 'color' => '#22c55e', 'is_done' => true, 'position' => 5],
+            ];
+
+            foreach ($defaultStages as $s) {
+                TaskStage::create([
+                    'list_id' => $list->id,
+                    'name' => $s['name'],
+                    'color' => $s['color'],
+                    'is_done' => $s['is_done'],
+                    'position' => $s['position'],
+                ]);
+            }
+
+            return $space;
+        });
 
         // Set workspace aktif ke workspace pilihan ini
         $request->session()->put('active_workspace_id', $workspace->id);
-
-        // Create default Task List
-        $list = TaskList::create([
-            'space_id' => $space->id,
-            'name' => 'Main Tasks',
-            'slug' => 'main-tasks',
-            'status' => 'active',
-            'position' => 1,
-        ]);
-
-        // Create default Kanban Stages
-        $defaultStages = [
-            ['name' => 'Backlog', 'color' => '#64748b', 'is_done' => false, 'position' => 1],
-            ['name' => 'To Do', 'color' => '#0284c7', 'is_done' => false, 'position' => 2],
-            ['name' => 'In Progress', 'color' => '#eab308', 'is_done' => false, 'position' => 3],
-            ['name' => 'In Review', 'color' => '#8b5cf6', 'is_done' => false, 'position' => 4],
-            ['name' => 'Done', 'color' => '#22c55e', 'is_done' => true, 'position' => 5],
-        ];
-
-        foreach ($defaultStages as $s) {
-            TaskStage::create([
-                'list_id' => $list->id,
-                'name' => $s['name'],
-                'color' => $s['color'],
-                'is_done' => $s['is_done'],
-                'position' => $s['position'],
-            ]);
-        }
 
         return redirect()->route('spaces.show', $space->slug)
             ->with('success', "Space '{$space->name}' berhasil dibuat dengan papan Kanban bawaan!");
@@ -353,9 +358,15 @@ class SpaceController extends Controller
     public function update(Request $request, Space $space): RedirectResponse
     {
         $user = Auth::user();
+        $workspace = $space->workspace;
 
-        if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
-            return back()->with('error', 'Tidak berwenang mengedit Space ini.');
+        $canManage = $user->isSuperAdmin() ||
+            $workspace->owner_id === $user->id ||
+            $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
+            $space->members()->where('users.id', $user->id)->wherePivot('role', 'manager')->exists();
+
+        if (! $canManage) {
+            return back()->with('error', 'Tidak berwenang mengedit Space ini. Hanya Space Manager, Workspace Owner, atau Workspace Admin yang berhak.');
         }
 
         $validated = $request->validate([
@@ -373,9 +384,15 @@ class SpaceController extends Controller
     public function destroy(Space $space): RedirectResponse
     {
         $user = Auth::user();
+        $workspace = $space->workspace;
 
-        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
-            return back()->with('error', 'Tidak berwenang menghapus Space ini.');
+        $canManage = $user->isSuperAdmin() ||
+            $workspace->owner_id === $user->id ||
+            $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
+            $space->members()->where('users.id', $user->id)->wherePivot('role', 'manager')->exists();
+
+        if (! $canManage) {
+            return back()->with('error', 'Tidak berwenang menghapus Space ini. Hanya Space Manager, Workspace Owner, atau Workspace Admin yang berhak.');
         }
 
         $name = $space->name;

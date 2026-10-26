@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\TaskCommentAddedEvent;
 use App\Models\ActivityLog;
 use App\Models\Task;
 use App\Models\TaskComment;
@@ -9,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class TaskCommentController extends Controller
 {
@@ -75,6 +77,16 @@ class TaskCommentController extends Controller
                 'comment_snippet' => mb_substr($comment->content, 0, 80),
             ],
         ]);
+
+        $comment->load('user:id,name,email');
+
+        DB::afterCommit(function () use ($space, $task, $comment) {
+            try {
+                broadcast(new TaskCommentAddedEvent($space->id, $task->id, $comment));
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
 
         if ($request->wantsJson()) {
             return response()->json([

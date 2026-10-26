@@ -1,8 +1,8 @@
 # ERD — NexSphere Project Management
 
-Versi 1.0 · Selaras dengan [PRD.md](PRD.md) dan [PROJECT_PLAN.md](PROJECT_PLAN.md)
+Versi 1.0 · Rancangan domain untuk dibaca bersama [PRD.md](../product/PRD.md) dan [PROJECT_PLAN.md](../planning/PROJECT_PLAN.md)
 
-Diagram ini menggambarkan fondasi data untuk MVP dan jalur perluasan. **MVP** menggunakan Workspace → Space → List → Task; Folder bisa dibuat dalam skema tetapi UI-nya ditunda. Bagian ekstensi adalah rancangan untuk tahap berikutnya, bukan scope implementasi MVP.
+Diagram ini menggambarkan fondasi data yang direncanakan untuk MVP dan jalur perluasan. **MVP target** menggunakan Workspace → Space → List → Task; Folder bisa dibuat dalam skema tetapi UI-nya ditunda. Bagian ekstensi adalah rancangan untuk tahap berikutnya, bukan scope implementasi MVP. Dokumen ini bukan hasil introspeksi database; cocokkan setiap entitas dan kolom dengan `database/migrations/` sebelum mengubah skema atau menyatakan model sudah selaras.
 
 ## 1. ERD fondasi MVP
 

@@ -6,6 +6,7 @@ import GanttTimeline from '@/Components/GanttTimeline.vue';
 import Sortable from 'sortablejs';
 import { confirmDelete, showToast } from '@/Utils/alert';
 import { formatDate, formatDateShort, formatDueDate, formatDateTime, isOverdueDate } from '@/Utils/date';
+import echo from '@/echo';
 
 const props = defineProps({
     space: {
@@ -404,6 +405,46 @@ const getCsrfToken = () => {
     return page.props.csrf_token || document.querySelector('meta[name="csrf-token"]')?.content;
 };
 
+// Modal clean snapshot to detect uncommitted user edits during realtime updates
+const modalCleanSnapshot = ref(null);
+
+const captureModalCleanSnapshot = (task) => {
+    if (!task) {
+        modalCleanSnapshot.value = null;
+        return;
+    }
+    modalCleanSnapshot.value = {
+        title: task.title || '',
+        description: task.description || '',
+        priority: task.priority || 'medium',
+        stage_id: task.stage_id,
+        start_date: task.start_date ? String(task.start_date).substring(0, 10) : '',
+        due_at: task.due_at ? String(task.due_at).substring(0, 10) : '',
+        estimate_minutes: task.estimate_minutes ? String(task.estimate_minutes) : '',
+        assignee_ids: (task.assignees ? task.assignees.map((a) => a.id) : []).slice().sort().join(','),
+        dependency_ids: (task.dependencies ? task.dependencies.map((d) => d.id) : []).slice().sort().join(','),
+    };
+};
+
+const hasUncommittedEdits = () => {
+    if (!modalCleanSnapshot.value) return false;
+    const snap = modalCleanSnapshot.value;
+    const currentAssignees = [...taskAssigneeIds.value].sort().join(',');
+    const currentDeps = [...taskDependencyIds.value].sort().join(',');
+
+    return (
+        taskTitle.value !== snap.title ||
+        taskDescription.value !== snap.description ||
+        taskPriority.value !== snap.priority ||
+        taskStageId.value !== snap.stage_id ||
+        taskStartDate.value !== snap.start_date ||
+        taskDueAt.value !== snap.due_at ||
+        String(taskEstimateMinutes.value || '') !== snap.estimate_minutes ||
+        currentAssignees !== snap.assignee_ids ||
+        currentDeps !== snap.dependency_ids
+    );
+};
+
 // Open Task Detail Modal
 const openTaskModal = async (task) => {
     selectedTask.value = JSON.parse(JSON.stringify(task));
@@ -422,6 +463,7 @@ const openTaskModal = async (task) => {
     taskModalTab.value = 'details';
     taskActivityLogs.value = [];
     isTaskModalOpen.value = true;
+    captureModalCleanSnapshot(selectedTask.value);
 
     // Fetch fresh task data & activity logs
     isLoadingTaskDetails.value = true;
@@ -441,6 +483,7 @@ const openTaskModal = async (task) => {
                 taskDependencyIds.value = data.task.dependencies ? data.task.dependencies.map((d) => d.id) : [];
                 taskActivityLogs.value = data.activity_logs || [];
                 syncTaskInLocalSpace(data.task);
+                captureModalCleanSnapshot(data.task);
             }
         }
     } catch (err) {
@@ -455,6 +498,7 @@ const closeTaskModal = () => {
     selectedTask.value = null;
     taskDependencyIds.value = [];
     selectedPrerequisiteTaskId.value = '';
+    modalCleanSnapshot.value = null;
 };
 
 // Sync updated task into localSpace across lists & stages
@@ -512,6 +556,7 @@ const saveTaskDetails = async (showAlert = false) => {
                 selectedTask.value = data.task;
                 taskDependencyIds.value = data.task.dependencies ? data.task.dependencies.map((d) => d.id) : [];
                 syncTaskInLocalSpace(data.task);
+                captureModalCleanSnapshot(data.task);
             }
             if (showAlert) {
                 showToast('Perubahan task berhasil disimpan!', 'success');
@@ -907,13 +952,26 @@ const deleteComment = async (com) => {
 };
 
 // ==========================================
-// REAL-TIME KANBAN & CHAT SYNC
+// REAL-TIME WEBSOCKET PUSH (LARAVEL ECHO & REVERB)
 // ==========================================
 const isDraggingCard = ref(false);
 const isMovingCard = ref(false);
-let kanbanPollingInterval = null;
-let commentsPollingInterval = null;
 
+// Realtime Connection & Status
+const connectionState = ref('connected');
+const isConnected = computed(() => connectionState.value === 'connected');
+const isReconnecting = computed(() => connectionState.value === 'connecting' || connectionState.value === 'reconnecting');
+const isOffline = computed(() => ['disconnected', 'unavailable', 'failed'].includes(connectionState.value));
+
+const reconnectEcho = () => {
+    connectionState.value = 'connecting';
+    const echoInstance = window.Echo || echo;
+    if (echoInstance?.connector?.pusher) {
+        echoInstance.connector.pusher.connect();
+    }
+};
+
+// One-time callable syncSpaceData (on mount or when reconnecting after connection drop)
 const syncSpaceData = async () => {
     // Avoid syncing while user is dragging a card, moving a card, or actively typing a new quick task
     if (isDraggingCard.value || isMovingCard.value || isSubmittingTask.value || activeQuickAddStageId.value) return;
@@ -959,6 +1017,10 @@ const syncSpaceData = async () => {
                             }
                         }
                     }
+
+                    nextTick(() => {
+                        initSortable();
+                    });
                 }
             }
         }
@@ -967,26 +1029,420 @@ const syncSpaceData = async () => {
     }
 };
 
-const pollComments = async () => {
-    if (!isTaskModalOpen.value || !selectedTask.value || isSubmittingComment.value) return;
-    try {
-        const res = await fetch(`/tasks/${selectedTask.value.id}/comments`, {
-            headers: {
-                Accept: 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
+// Realtime Event Handlers
+const handleTaskCreated = (event) => {
+    const task = event.task || event;
+    if (!task || !task.id) return;
+
+    // Check if task already exists anywhere in localSpace
+    for (const list of localSpace.value.lists || []) {
+        for (const stage of list.stages || []) {
+            if ((stage.tasks || []).some((t) => t.id === task.id)) {
+                return;
+            }
+        }
+    }
+
+    let inserted = false;
+    for (const list of localSpace.value.lists || []) {
+        for (const stage of list.stages || []) {
+            if (stage.id === task.stage_id) {
+                if (!stage.tasks) stage.tasks = [];
+                if (!task.stage) {
+                    task.stage = {
+                        id: stage.id,
+                        name: stage.name,
+                        color: stage.color,
+                        is_done: stage.is_done,
+                    };
+                }
+                stage.tasks.push(task);
+                stage.tasks.sort((a, b) => (a.position || 0) - (b.position || 0));
+                inserted = true;
+                break;
+            }
+        }
+        if (inserted) break;
+    }
+
+    if (!inserted && currentList.value?.stages?.[0]) {
+        if (!currentList.value.stages[0].tasks) currentList.value.stages[0].tasks = [];
+        currentList.value.stages[0].tasks.push(task);
+    }
+
+    nextTick(() => {
+        initSortable();
+    });
+};
+
+const handleTaskUpdated = (event) => {
+    const updatedTask = event.task || event;
+    if (!updatedTask || !updatedTask.id) return;
+
+    syncTaskInLocalSpace(updatedTask);
+
+    if (isTaskModalOpen.value && selectedTask.value && selectedTask.value.id === updatedTask.id) {
+        if (hasUncommittedEdits()) {
+            showToast(
+                'Perhatian: Task ini baru saja diperbarui oleh pengguna lain. Harap tinjau kembali perubahan Anda.',
+                'warning'
+            );
+        } else {
+            selectedTask.value = updatedTask;
+            taskTitle.value = updatedTask.title || '';
+            taskDescription.value = updatedTask.description || '';
+            taskPriority.value = updatedTask.priority || 'medium';
+            taskStageId.value = updatedTask.stage_id;
+            taskStartDate.value = updatedTask.start_date ? String(updatedTask.start_date).substring(0, 10) : '';
+            taskDueAt.value = updatedTask.due_at ? String(updatedTask.due_at).substring(0, 10) : '';
+            taskEstimateMinutes.value = updatedTask.estimate_minutes || '';
+            taskAssigneeIds.value = updatedTask.assignees ? updatedTask.assignees.map((a) => a.id) : [];
+            taskDependencyIds.value = updatedTask.dependencies ? updatedTask.dependencies.map((d) => d.id) : [];
+            captureModalCleanSnapshot(updatedTask);
+        }
+    }
+
+    nextTick(() => {
+        initSortable();
+    });
+};
+
+const handleTaskMoved = (event) => {
+    const taskId = event.task_id || event.task?.id || event.id;
+    const targetStageId = event.to_stage_id || event.stage_id || event.new_stage_id || event.task?.stage_id;
+    const newPosition = event.position !== undefined ? parseInt(event.position) : (event.task?.position ?? 1);
+    const movedByUserId = event.user_id || event.moved_by;
+
+    if (!taskId) return;
+
+    if (movedByUserId && currentUser.value && movedByUserId === currentUser.value.id && isMovingCard.value) {
+        return;
+    }
+
+    const taskIdNum = parseInt(taskId);
+    const targetStageIdNum = parseInt(targetStageId);
+
+    let movedTask = null;
+    let targetStage = null;
+
+    for (const list of localSpace.value.lists || []) {
+        for (const stg of list.stages || []) {
+            if (stg.id === targetStageIdNum) {
+                targetStage = stg;
+            }
+            const idx = (stg.tasks || []).findIndex((t) => t.id === taskIdNum);
+            if (idx > -1) {
+                const [removed] = stg.tasks.splice(idx, 1);
+                movedTask = removed;
+                stg.tasks.forEach((t, i) => {
+                    t.position = i + 1;
+                });
+            }
+        }
+    }
+
+    if (!movedTask && event.task) {
+        movedTask = JSON.parse(JSON.stringify(event.task));
+    }
+
+    if (movedTask && targetStage) {
+        movedTask.stage_id = targetStageIdNum;
+        movedTask.stage = {
+            id: targetStage.id,
+            name: targetStage.name,
+            color: targetStage.color,
+            is_done: targetStage.is_done,
+        };
+
+        if (!targetStage.tasks) targetStage.tasks = [];
+        const insertIdx = Math.max(0, Math.min(newPosition - 1, targetStage.tasks.length));
+        targetStage.tasks.splice(insertIdx, 0, movedTask);
+
+        targetStage.tasks.forEach((t, i) => {
+            t.position = i + 1;
         });
-        if (res.ok) {
-            const data = await res.json();
-            if (data.comments) {
-                const newComJson = JSON.stringify(data.comments);
-                const oldComJson = JSON.stringify(selectedTask.value.comments || []);
-                if (newComJson !== oldComJson) {
-                    selectedTask.value.comments = data.comments;
+
+        if (selectedTask.value && selectedTask.value.id === taskIdNum) {
+            selectedTask.value.stage_id = targetStageIdNum;
+            taskStageId.value = targetStageIdNum;
+            if (modalCleanSnapshot.value) {
+                modalCleanSnapshot.value.stage_id = targetStageIdNum;
+            }
+        }
+    } else {
+        syncSpaceData();
+    }
+
+    nextTick(() => {
+        initSortable();
+    });
+};
+
+const handleTaskDeleted = (event) => {
+    const taskId = event.task_id || event.task?.id || event.id;
+    if (!taskId) return;
+    const taskIdNum = parseInt(taskId);
+
+    if (isTaskModalOpen.value && selectedTask.value && selectedTask.value.id === taskIdNum) {
+        closeTaskModal();
+        showToast('Task ini telah dihapus oleh pengguna lain.', 'info');
+    }
+
+    for (const list of localSpace.value.lists || []) {
+        for (const stage of list.stages || []) {
+            const idx = (stage.tasks || []).findIndex((t) => t.id === taskIdNum);
+            if (idx > -1) {
+                stage.tasks.splice(idx, 1);
+                stage.tasks.forEach((t, i) => {
+                    t.position = i + 1;
+                });
+            }
+        }
+    }
+
+    nextTick(() => {
+        initSortable();
+    });
+};
+
+const handleTaskChecklistToggled = (event) => {
+    const taskId = event.taskId || event.task_id || event.checklist?.task_id || event.task?.id;
+    const checklistId = event.checklistId || event.checklist_id || event.checklist?.id || event.id;
+    const isCompleted = event.isCompleted !== undefined ? !!event.isCompleted : (event.is_completed !== undefined ? !!event.is_completed : false);
+
+    if (!taskId || checklistId === undefined) return;
+    const taskIdNum = parseInt(taskId);
+    const checklistIdNum = parseInt(checklistId);
+
+    if (selectedTask.value && selectedTask.value.id === taskIdNum) {
+        if (selectedTask.value.checklists) {
+            const chk = selectedTask.value.checklists.find((c) => c.id === checklistIdNum);
+            if (chk) {
+                chk.is_completed = isCompleted;
+            }
+        }
+        if (event.checklistsCount !== undefined) {
+            selectedTask.value.checklists_count = event.checklistsCount;
+        }
+        if (event.completedChecklistsCount !== undefined) {
+            selectedTask.value.completed_checklists_count = event.completedChecklistsCount;
+        }
+    }
+
+    for (const list of localSpace.value.lists || []) {
+        for (const stage of list.stages || []) {
+            const foundTask = (stage.tasks || []).find((t) => t.id === taskIdNum);
+            if (foundTask) {
+                if (foundTask.checklists) {
+                    const chk = foundTask.checklists.find((c) => c.id === checklistIdNum);
+                    if (chk) {
+                        chk.is_completed = isCompleted;
+                    }
+                }
+                if (event.checklistsCount !== undefined) {
+                    foundTask.checklists_count = event.checklistsCount;
+                }
+                if (event.completedChecklistsCount !== undefined) {
+                    foundTask.completed_checklists_count = event.completedChecklistsCount;
                 }
             }
         }
-    } catch (e) {}
+    }
+};
+
+const handleTaskCommentAdded = (event) => {
+    const comment = event.comment || event;
+    const taskId = event.taskId || event.task_id || comment.task_id;
+    if (!comment || !taskId) return;
+    const taskIdNum = parseInt(taskId);
+
+    if (selectedTask.value && selectedTask.value.id === taskIdNum) {
+        if (!selectedTask.value.comments) {
+            selectedTask.value.comments = [];
+        }
+        const exists = selectedTask.value.comments.some((c) => c.id === comment.id);
+        if (!exists) {
+            selectedTask.value.comments.unshift(comment);
+        }
+    }
+
+    for (const list of localSpace.value.lists || []) {
+        for (const stage of list.stages || []) {
+            const foundTask = (stage.tasks || []).find((t) => t.id === taskIdNum);
+            if (foundTask) {
+                if (!foundTask.comments) foundTask.comments = [];
+                const exists = foundTask.comments.some((c) => c.id === comment.id);
+                if (!exists) {
+                    foundTask.comments.unshift(comment);
+                }
+                if (foundTask.comments_count !== undefined) {
+                    foundTask.comments_count = foundTask.comments.length;
+                }
+            }
+        }
+    }
+};
+
+const handleTaskAttachmentUploaded = (event) => {
+    const attachment = event.attachment || event;
+    const taskId = event.taskId || event.task_id || attachment.task_id;
+    if (!attachment || !taskId) return;
+    const taskIdNum = parseInt(taskId);
+
+    if (selectedTask.value && selectedTask.value.id === taskIdNum) {
+        if (!selectedTask.value.attachments) {
+            selectedTask.value.attachments = [];
+        }
+        const exists = selectedTask.value.attachments.some((a) => a.id === attachment.id);
+        if (!exists) {
+            selectedTask.value.attachments.unshift(attachment);
+        }
+    }
+
+    for (const list of localSpace.value.lists || []) {
+        for (const stage of list.stages || []) {
+            const foundTask = (stage.tasks || []).find((t) => t.id === taskIdNum);
+            if (foundTask) {
+                if (!foundTask.attachments) foundTask.attachments = [];
+                const exists = foundTask.attachments.some((a) => a.id === attachment.id);
+                if (!exists) {
+                    foundTask.attachments.unshift(attachment);
+                }
+            }
+        }
+    }
+};
+
+const handleTaskAttachmentDeleted = (event) => {
+    const taskId = event.taskId || event.task_id || event.attachment?.task_id;
+    const attachmentId = event.attachmentId || event.attachment_id || event.attachment?.id || event.id;
+    if (!taskId || !attachmentId) return;
+    const taskIdNum = parseInt(taskId);
+    const attachmentIdNum = parseInt(attachmentId);
+
+    if (selectedTask.value && selectedTask.value.id === taskIdNum) {
+        if (selectedTask.value.attachments) {
+            selectedTask.value.attachments = selectedTask.value.attachments.filter((a) => a.id !== attachmentIdNum);
+        }
+    }
+
+    for (const list of localSpace.value.lists || []) {
+        for (const stage of list.stages || []) {
+            const foundTask = (stage.tasks || []).find((t) => t.id === taskIdNum);
+            if (foundTask && foundTask.attachments) {
+                foundTask.attachments = foundTask.attachments.filter((a) => a.id !== attachmentIdNum);
+            }
+        }
+    }
+};
+
+const handleSpaceStageChanged = (event) => {
+    const action = event.action;
+    const stage = event.stage;
+    const listId = event.listId || event.list_id;
+
+    if (action && stage) {
+        for (const list of localSpace.value.lists || []) {
+            if (!listId || list.id === listId) {
+                if (!list.stages) list.stages = [];
+                if (action === 'created') {
+                    if (!list.stages.some((s) => s.id === stage.id)) {
+                        list.stages.push(stage);
+                    }
+                } else if (action === 'updated') {
+                    const idx = list.stages.findIndex((s) => s.id === stage.id);
+                    if (idx > -1) {
+                        list.stages[idx] = { ...list.stages[idx], ...stage };
+                    }
+                } else if (action === 'deleted') {
+                    list.stages = list.stages.filter((s) => s.id !== stage.id);
+                }
+            }
+        }
+    } else if (event.stages && Array.isArray(event.stages)) {
+        if (currentList.value) {
+            currentList.value.stages = event.stages;
+        }
+        for (const list of localSpace.value.lists || []) {
+            if (event.listId ? list.id === event.listId : (event.list_id ? list.id === event.list_id : true)) {
+                list.stages = event.stages;
+            }
+        }
+    } else {
+        syncSpaceData();
+    }
+    nextTick(() => {
+        initSortable();
+    });
+};
+
+// Echo Channel Subscription
+let echoChannel = null;
+
+const initEcho = () => {
+    const echoInstance = window.Echo || echo;
+    if (!echoInstance) return;
+
+    const conn = echoInstance.connector?.pusher?.connection;
+    if (conn) {
+        connectionState.value = conn.state || 'connected';
+
+        conn.bind('state_change', (states) => {
+            const prev = states.previous;
+            const current = states.current;
+            connectionState.value = current;
+
+            // When connection transitions back to connected, trigger a single syncSpaceData()
+            if (current === 'connected' && prev && prev !== 'connected') {
+                syncSpaceData();
+            }
+        });
+        conn.bind('connected', () => {
+            connectionState.value = 'connected';
+        });
+        conn.bind('connecting', () => {
+            connectionState.value = 'connecting';
+        });
+        conn.bind('disconnected', () => {
+            connectionState.value = 'disconnected';
+        });
+        conn.bind('unavailable', () => {
+            connectionState.value = 'unavailable';
+        });
+        conn.bind('failed', () => {
+            connectionState.value = 'failed';
+        });
+    }
+
+    const channelName = `space.${props.space.id}`;
+    echoChannel = echoInstance.private(channelName);
+
+    echoChannel
+        .listen('.TaskCreatedEvent', handleTaskCreated)
+        .listen('TaskCreatedEvent', handleTaskCreated)
+        .listen('.TaskUpdatedEvent', handleTaskUpdated)
+        .listen('TaskUpdatedEvent', handleTaskUpdated)
+        .listen('.TaskMovedEvent', handleTaskMoved)
+        .listen('TaskMovedEvent', handleTaskMoved)
+        .listen('.TaskDeletedEvent', handleTaskDeleted)
+        .listen('TaskDeletedEvent', handleTaskDeleted)
+        .listen('.TaskChecklistToggledEvent', handleTaskChecklistToggled)
+        .listen('TaskChecklistToggledEvent', handleTaskChecklistToggled)
+        .listen('.TaskCommentAddedEvent', handleTaskCommentAdded)
+        .listen('TaskCommentAddedEvent', handleTaskCommentAdded)
+        .listen('.TaskAttachmentUploadedEvent', handleTaskAttachmentUploaded)
+        .listen('TaskAttachmentUploadedEvent', handleTaskAttachmentUploaded)
+        .listen('.TaskAttachmentDeletedEvent', handleTaskAttachmentDeleted)
+        .listen('TaskAttachmentDeletedEvent', handleTaskAttachmentDeleted)
+        .listen('.SpaceStageChangedEvent', handleSpaceStageChanged)
+        .listen('SpaceStageChangedEvent', handleSpaceStageChanged);
+};
+
+const cleanupEcho = () => {
+    const echoInstance = window.Echo || echo;
+    if (echoInstance) {
+        echoInstance.leave(`space.${props.space.id}`);
+    }
 };
 
 // ==========================================
@@ -1109,13 +1565,11 @@ onMounted(() => {
     nextTick(() => {
         initSortable();
     });
-    kanbanPollingInterval = setInterval(syncSpaceData, 4000);
-    commentsPollingInterval = setInterval(pollComments, 3000);
+    initEcho();
 });
 
 onUnmounted(() => {
-    if (kanbanPollingInterval) clearInterval(kanbanPollingInterval);
-    if (commentsPollingInterval) clearInterval(commentsPollingInterval);
+    cleanupEcho();
 });
 
 watch(
@@ -1210,10 +1664,43 @@ const filteredTasks = computed(() => {
                             >
                                 {{ space.status === 'active' ? 'Aktif' : 'Selesai' }}
                             </span>
-                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 fs-11 d-inline-flex align-items-center gap-1" title="Kanban & Diskusi tersinkronisasi otomatis secara realtime">
-                                <span class="spinner-grow spinner-grow-sm text-success" style="width: 6px; height: 6px;" role="status"></span>
-                                Live Sync
+                            <!-- Realtime WebSocket Push Status Indicator -->
+                            <span
+                                v-if="isConnected"
+                                class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2.5 py-1 fs-11 d-inline-flex align-items-center gap-1.5 shadow-2xs"
+                                title="WebSocket Reverb aktif - kolaborasi realtime terhubung"
+                            >
+                                <span class="spinner-grow spinner-grow-sm text-success" style="width: 7px; height: 7px;" role="status"></span>
+                                <span>Realtime Terhubung</span>
                             </span>
+
+                            <span
+                                v-else-if="isReconnecting"
+                                class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2.5 py-1 fs-11 d-inline-flex align-items-center gap-1.5 shadow-2xs"
+                                title="Sedang menghubungkan kembali ke server WebSocket..."
+                            >
+                                <span class="spinner-border spinner-border-sm text-warning" style="width: 8px; height: 8px; border-width: 1.5px;" role="status"></span>
+                                <span>Menghubungkan kembali...</span>
+                            </span>
+
+                            <div v-else class="d-inline-flex align-items-center gap-1.5">
+                                <span
+                                    class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2.5 py-1 fs-11 d-inline-flex align-items-center gap-1.5 shadow-2xs"
+                                    title="Koneksi WebSocket terputus"
+                                >
+                                    <span class="rounded-circle bg-danger" style="width: 7px; height: 7px;"></span>
+                                    <span>Offline</span>
+                                </span>
+                                <button
+                                    type="button"
+                                    class="btn btn-xs btn-outline-danger rounded-pill py-0.5 px-2 fs-11 fw-semibold d-inline-flex align-items-center gap-1 shadow-2xs"
+                                    @click="reconnectEcho"
+                                    title="Sambungkan ulang WebSocket sekarang"
+                                >
+                                    <i class="ri-refresh-line"></i>
+                                    <span>Sambungkan Ulang</span>
+                                </button>
+                            </div>
                         </h4>
                         <p class="text-muted fs-13 mb-0" style="max-width: 650px;">
                             {{ space.description || 'Ruang kerja kolaboratif tim.' }}
