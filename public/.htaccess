@@ -5,6 +5,12 @@
 
     RewriteEngine On
 
+    # Reverse Proxy WebSocket ke Reverb daemon (Port 8080)
+    RewriteCond %{HTTP:Upgrade} websocket [NC]
+    RewriteCond %{HTTP:Connection} upgrade [NC]
+    RewriteRule ^app/(.*) ws://127.0.0.1:8080/app/$1 [P,L]
+    RewriteRule ^apps/(.*) http://127.0.0.1:8080/apps/$1 [P,L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
