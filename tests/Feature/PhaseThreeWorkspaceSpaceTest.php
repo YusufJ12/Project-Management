@@ -205,6 +205,51 @@ class PhaseThreeWorkspaceSpaceTest extends TestCase
         $this->assertEquals('admin', $workspace->members()->where('users.id', $member->id)->first()->pivot->role);
     }
 
+    public function test_workspace_owner_can_update_space_member_role(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+
+        $workspace = Workspace::create(['name' => 'WS', 'slug' => 'ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+        $workspace->members()->attach($member->id, ['role' => 'member']);
+
+        $space = Space::create(['workspace_id' => $workspace->id, 'name' => 'SP', 'slug' => 'sp']);
+        $space->members()->attach($owner->id, ['role' => 'manager']);
+        $space->members()->attach($member->id, ['role' => 'member']);
+
+        $response = $this->actingAs($owner)->put("/spaces/{$space->id}/members/{$member->id}", [
+            'role' => 'viewer',
+        ]);
+
+        $response->assertRedirect();
+        $this->assertEquals('viewer', $space->fresh()->members()->where('users.id', $member->id)->first()->pivot->role);
+    }
+
+    public function test_space_manager_can_update_space_member_role(): void
+    {
+        $owner = User::factory()->create();
+        $manager = User::factory()->create();
+        $member = User::factory()->create();
+
+        $workspace = Workspace::create(['name' => 'WS', 'slug' => 'ws', 'owner_id' => $owner->id]);
+        $workspace->members()->attach($owner->id, ['role' => 'owner']);
+        $workspace->members()->attach($manager->id, ['role' => 'member']);
+        $workspace->members()->attach($member->id, ['role' => 'member']);
+
+        $space = Space::create(['workspace_id' => $workspace->id, 'name' => 'SP', 'slug' => 'sp']);
+        $space->members()->attach($owner->id, ['role' => 'manager']);
+        $space->members()->attach($manager->id, ['role' => 'manager']);
+        $space->members()->attach($member->id, ['role' => 'member']);
+
+        $response = $this->actingAs($manager)->put("/spaces/{$space->id}/members/{$member->id}", [
+            'role' => 'viewer',
+        ]);
+
+        $response->assertRedirect();
+        $this->assertEquals('viewer', $space->fresh()->members()->where('users.id', $member->id)->first()->pivot->role);
+    }
+
     public function test_workspace_owner_can_remove_member_from_workspace(): void
     {
         $owner = User::factory()->create();

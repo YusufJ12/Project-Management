@@ -4,7 +4,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import GanttTimeline from '@/Components/GanttTimeline.vue';
 import Sortable from 'sortablejs';
-import { confirmDelete, showToast } from '@/Utils/alert';
+import { confirmDelete, confirmAction, showToast } from '@/Utils/alert';
 import { formatDate, formatDateShort, formatDueDate, formatDateTime, isOverdueDate } from '@/Utils/date';
 import echo from '@/echo';
 
@@ -145,6 +145,80 @@ const removeSpaceMember = async (member) => {
             preserveScroll: true,
             onSuccess: () => {
                 showToast(`${member.name} berhasil dikeluarkan dari Space.`, 'success');
+            },
+        });
+    }
+};
+
+const getSpaceRoleLabel = (role) => {
+    switch (role) {
+        case 'manager':
+            return 'Manajer Space';
+        case 'viewer':
+            return 'Pengamat (Viewer)';
+        default:
+            return 'Anggota (Member)';
+    }
+};
+
+const getSpaceRoleBadgeClass = (role) => {
+    switch (role) {
+        case 'manager':
+            return 'bg-danger-subtle text-danger border border-danger-subtle';
+        case 'viewer':
+            return 'bg-info-subtle text-info border border-info-subtle';
+        default:
+            return 'bg-primary-subtle text-primary border border-primary-subtle';
+    }
+};
+
+const activeRoleMenuMemberId = ref(null);
+
+const toggleRoleMenu = (memberId) => {
+    activeRoleMenuMemberId.value = activeRoleMenuMemberId.value === memberId ? null : memberId;
+};
+
+const closeAllRoleMenus = () => {
+    activeRoleMenuMemberId.value = null;
+};
+
+onMounted(() => {
+    window.addEventListener('click', closeAllRoleMenus);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('click', closeAllRoleMenus);
+});
+
+const updateSpaceMemberRole = async (member, newRole) => {
+    activeRoleMenuMemberId.value = null;
+    const oldRole = member.pivot?.role || 'member';
+    if (newRole === oldRole) return;
+
+    const roleLabel = getSpaceRoleLabel(newRole);
+    const confirmed = await confirmAction({
+        title: 'Ubah Peran Anggota?',
+        text: `Ubah peran ${member.name} menjadi ${roleLabel}?`,
+        confirmButtonText: 'Ya, Ubah Peran',
+    });
+
+    if (confirmed) {
+        if (member.pivot) {
+            member.pivot.role = newRole;
+        }
+
+        router.put(`/spaces/${props.space.id}/members/${member.id}`, {
+            role: newRole,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                showToast(`Peran ${member.name} berhasil diubah menjadi ${roleLabel}!`, 'success');
+            },
+            onError: () => {
+                if (member.pivot) {
+                    member.pivot.role = oldRole;
+                }
+                showToast('Gagal mengubah peran anggota.', 'error');
             },
         });
     }
@@ -626,6 +700,11 @@ const saveTaskDetails = async (showAlert = false) => {
                 selectedTask.value = data.task;
                 taskDependencyIds.value = data.task.dependencies ? data.task.dependencies.map((d) => d.id) : [];
                 syncTaskInLocalSpace(data.task);
+                if (data.cascaded_tasks && Array.isArray(data.cascaded_tasks)) {
+                    data.cascaded_tasks.forEach((ct) => {
+                        syncTaskInLocalSpace(ct);
+                    });
+                }
                 captureModalCleanSnapshot(data.task);
             }
             if (showAlert) {
@@ -711,7 +790,15 @@ const handleUpdateTaskDates = async ({ taskId, startDate, dueAt }) => {
             if (data.task) {
                 syncTaskInLocalSpace(data.task);
             }
-            showToast('Timeline tugas berhasil diperbarui', 'success');
+            if (data.cascaded_tasks && Array.isArray(data.cascaded_tasks)) {
+                data.cascaded_tasks.forEach((ct) => {
+                    syncTaskInLocalSpace(ct);
+                });
+            }
+            const msg = data.cascaded_tasks?.length
+                ? `Timeline diperbarui. ${data.cascaded_tasks.length} tugas dependensi otomatis disesuaikan.`
+                : 'Timeline tugas berhasil diperbarui.';
+            showToast(msg, 'success');
         } else {
             if (updatedTask) {
                 updatedTask.start_date = oldStartDate;
@@ -2609,15 +2696,74 @@ const filteredTasks = computed(() => {
             <div class="row g-3">
                 <div v-for="member in localSpace.members" :key="member.id" class="col-md-4">
                     <div class="border border-secondary-subtle rounded-3 p-3 d-flex align-items-center justify-content-between gap-2 bg-body shadow-2xs">
-                        <div class="d-flex align-items-center gap-3 overflow-hidden">
+                        <div class="d-flex align-items-center gap-3" style="min-width: 0;">
                             <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fs-16 fw-semibold flex-shrink-0" style="width: 42px; height: 42px;">
                                 {{ member.name.charAt(0).toUpperCase() }}
                             </div>
-                            <div class="overflow-hidden">
+                            <div style="min-width: 0;">
                                 <h6 class="fw-bold mb-0 fs-14 text-truncate text-body">{{ member.name }}</h6>
                                 <span class="fs-12 text-muted text-truncate d-block">{{ member.email }}</span>
-                                <div class="badge bg-primary-subtle text-primary rounded-pill mt-1 fs-10 text-capitalize">
-                                    {{ member.pivot?.role || 'Member' }}
+                                <div v-if="!isViewer" class="position-relative mt-1 d-inline-block">
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm rounded-pill px-2 py-0 fs-11 fw-semibold d-inline-flex align-items-center gap-1 border shadow-2xs transition-all cursor-pointer"
+                                        :class="member.pivot?.role === 'manager' 
+                                            ? 'text-danger bg-danger-subtle border-danger-subtle' 
+                                            : (member.pivot?.role === 'viewer' 
+                                                ? 'text-info bg-info-subtle border-info-subtle' 
+                                                : 'text-primary bg-primary-subtle border-primary-subtle')"
+                                        style="height: 24px;"
+                                        @click.stop="toggleRoleMenu(member.id)"
+                                        title="Klik untuk ubah peran anggota"
+                                    >
+                                        <span>{{ getSpaceRoleLabel(member.pivot?.role) }}</span>
+                                        <i class="ri-arrow-down-s-line fs-11 text-muted" :style="{ transform: activeRoleMenuMemberId === member.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }"></i>
+                                    </button>
+
+                                    <!-- Dropdown Menu -->
+                                    <div
+                                        v-if="activeRoleMenuMemberId === member.id"
+                                        class="position-absolute start-0 mt-1 bg-body border border-secondary-subtle rounded-3 shadow-lg p-1"
+                                        style="min-width: 170px; top: 100%; z-index: 1060;"
+                                        @click.stop
+                                    >
+                                        <button
+                                            type="button"
+                                            class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                            :class="{ 'text-danger fw-bold bg-danger-subtle': member.pivot?.role === 'manager' }"
+                                            @click="updateSpaceMemberRole(member, 'manager')"
+                                        >
+                                            <span class="d-flex align-items-center gap-2">
+                                                <i class="ri-shield-user-line text-danger"></i> Manajer Space
+                                            </span>
+                                            <i v-if="member.pivot?.role === 'manager'" class="ri-check-line text-danger"></i>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                            :class="{ 'text-primary fw-bold bg-primary-subtle': (!member.pivot?.role || member.pivot?.role === 'member') }"
+                                            @click="updateSpaceMemberRole(member, 'member')"
+                                        >
+                                            <span class="d-flex align-items-center gap-2">
+                                                <i class="ri-user-line text-primary"></i> Anggota (Member)
+                                            </span>
+                                            <i v-if="!member.pivot?.role || member.pivot?.role === 'member'" class="ri-check-line text-primary"></i>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                            :class="{ 'text-info fw-bold bg-info-subtle': member.pivot?.role === 'viewer' }"
+                                            @click="updateSpaceMemberRole(member, 'viewer')"
+                                        >
+                                            <span class="d-flex align-items-center gap-2">
+                                                <i class="ri-eye-line text-info"></i> Pengamat (Viewer)
+                                            </span>
+                                            <i v-if="member.pivot?.role === 'viewer'" class="ri-check-line text-info"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div v-else class="badge rounded-pill mt-1 fs-10 text-capitalize" :class="getSpaceRoleBadgeClass(member.pivot?.role)">
+                                    {{ getSpaceRoleLabel(member.pivot?.role) }}
                                 </div>
                             </div>
                         </div>

@@ -432,6 +432,7 @@ class TaskController extends Controller
         $newStartDate = $task->start_date ? Carbon::parse($task->start_date)->toDateString() : null;
         $newDueAt = $task->due_at ? Carbon::parse($task->due_at)->toDateString() : null;
 
+        $cascadedTasks = [];
         if ($oldStartDate !== $newStartDate || $oldDueAt !== $newDueAt) {
             $datesSummary = ($newStartDate ? Carbon::parse($newStartDate)->format('d M Y') : 'Tanpa tgl') . ' s/d ' . ($newDueAt ? Carbon::parse($newDueAt)->format('d M Y') : 'Tanpa tenggat');
             ActivityLog::create([
@@ -452,7 +453,7 @@ class TaskController extends Controller
                 ],
             ]);
 
-            $task->cascadeTimeline();
+            $cascadedTasks = $task->cascadeTimeline();
         }
 
         // Cek apakah berpindah ke stage done (sebelumnya belum done)
@@ -485,9 +486,12 @@ class TaskController extends Controller
             'dependents:id,title,start_date,due_at',
         ]);
 
-        DB::afterCommit(function () use ($task, $user, $space) {
+        DB::afterCommit(function () use ($task, $user, $space, $cascadedTasks) {
             try {
                 broadcast(new TaskUpdatedEvent($task, $user, $space->id));
+                foreach ($cascadedTasks as $cTask) {
+                    broadcast(new TaskUpdatedEvent($cTask, $user, $space->id));
+                }
             } catch (\Throwable $e) {
                 report($e);
             }
@@ -496,8 +500,11 @@ class TaskController extends Controller
         if ($request->wantsJson()) {
             return response()->json([
                 'success' => true,
-                'message' => 'Task berhasil diperbarui.',
+                'message' => count($cascadedTasks) > 0
+                    ? 'Task diperbarui beserta ' . count($cascadedTasks) . ' tugas dependensi.'
+                    : 'Task berhasil diperbarui.',
                 'task' => $task,
+                'cascaded_tasks' => $cascadedTasks,
             ]);
         }
 

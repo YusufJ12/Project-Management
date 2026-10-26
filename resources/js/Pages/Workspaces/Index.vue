@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { confirmDelete, confirmAction, showWarning, showToast } from '@/Utils/alert';
@@ -185,18 +185,42 @@ const submitAddMember = () => {
     });
 };
 
+const activeRoleMenuMemberId = ref(null);
+
+const toggleRoleMenu = (memberId) => {
+    activeRoleMenuMemberId.value = activeRoleMenuMemberId.value === memberId ? null : memberId;
+};
+
+const closeAllRoleMenus = () => {
+    activeRoleMenuMemberId.value = null;
+};
+
+onMounted(() => {
+    window.addEventListener('click', closeAllRoleMenus);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('click', closeAllRoleMenus);
+});
+
 const updateMemberRole = async (member, newRole) => {
+    activeRoleMenuMemberId.value = null;
     if (member.is_owner) {
         showWarning('Perhatian', 'Peran Pemilik (Owner) workspace tidak dapat diubah.');
         return;
     }
-    const roleLabel = newRole === 'admin' ? 'Administrator Workspace' : 'Anggota (Member)';
+    const roleLabel = newRole === 'admin'
+        ? 'Administrator Workspace'
+        : (newRole === 'viewer' ? 'Pengamat (Viewer)' : 'Anggota (Member)');
     const confirmed = await confirmAction({
         title: 'Ubah Peran Anggota?',
         text: `Ubah peran ${member.name} menjadi ${roleLabel}?`,
         confirmButtonText: 'Ya, Ubah Peran',
     });
     if (confirmed) {
+        const oldRole = member.role;
+        member.role = newRole;
+
         router.put(`/workspaces/${selectedWorkspace.value.id}/members/${member.id}`, {
             role: newRole,
         }, {
@@ -207,6 +231,10 @@ const updateMemberRole = async (member, newRole) => {
                 if (updated) {
                     selectedWorkspace.value = updated;
                 }
+            },
+            onError: () => {
+                member.role = oldRole;
+                showToast('Gagal mengubah peran anggota.', 'error');
             },
         });
     }
@@ -242,6 +270,8 @@ const getRoleBadgeClass = (role) => {
             return 'bg-danger-subtle text-danger border border-danger-subtle';
         case 'admin':
             return 'bg-primary-subtle text-primary border border-primary-subtle';
+        case 'viewer':
+            return 'bg-info-subtle text-info border border-info-subtle';
         default:
             return 'bg-secondary-subtle text-secondary border border-secondary-subtle';
     }
@@ -253,6 +283,8 @@ const getRoleLabel = (role) => {
             return 'Pemilik (Owner)';
         case 'admin':
             return 'Admin Workspace';
+        case 'viewer':
+            return 'Pengamat (Viewer)';
         default:
             return 'Anggota (Member)';
     }
@@ -632,6 +664,7 @@ const getRoleLabel = (role) => {
                                         <select v-model="addMemberForm.role" class="form-select form-select-sm">
                                             <option value="member">Anggota (Member)</option>
                                             <option value="admin">Administrator</option>
+                                            <option value="viewer">Pengamat (Viewer)</option>
                                         </select>
                                     </div>
                                     <div class="col-md-2">
@@ -694,41 +727,65 @@ const getRoleLabel = (role) => {
                                                 <i class="ri-vip-crown-fill me-1"></i> Pemilik (Owner)
                                             </span>
 
-                                            <!-- Jika Bukan Owner & Punya Akses: Dropdown Ubah Peran -->
-                                            <div v-else-if="selectedWorkspace.can_manage" class="dropdown d-inline-block">
+                                            <!-- Jika Bukan Owner & Punya Akses: Custom Vue Dropdown Ubah Peran -->
+                                            <div v-else-if="selectedWorkspace.can_manage" class="position-relative d-inline-block">
                                                 <button
-                                                    class="btn btn-sm btn-light border rounded-pill px-2 py-1 fs-11 d-inline-flex align-items-center gap-1 text-capitalize"
                                                     type="button"
-                                                    data-bs-toggle="dropdown"
-                                                    aria-expanded="false"
+                                                    class="btn btn-sm rounded-pill px-2 py-0 fs-11 fw-semibold d-inline-flex align-items-center gap-1 border shadow-2xs transition-all cursor-pointer"
+                                                    :class="member.role === 'admin' 
+                                                        ? 'text-primary bg-primary-subtle border-primary-subtle' 
+                                                        : (member.role === 'viewer' 
+                                                            ? 'text-info bg-info-subtle border-info-subtle' 
+                                                            : 'text-secondary bg-secondary-subtle border-secondary-subtle')"
+                                                    style="height: 24px;"
+                                                    @click.stop="toggleRoleMenu(member.id)"
+                                                    title="Klik untuk ubah peran anggota workspace"
                                                 >
-                                                    <span :class="member.role === 'admin' ? 'text-primary fw-semibold' : 'text-secondary'">
-                                                        {{ getRoleLabel(member.role) }}
-                                                    </span>
-                                                    <i class="bi bi-chevron-down fs-10 text-muted ms-1"></i>
+                                                    <span>{{ getRoleLabel(member.role) }}</span>
+                                                    <i class="ri-arrow-down-s-line fs-11 text-muted" :style="{ transform: activeRoleMenuMemberId === member.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }"></i>
                                                 </button>
-                                                <ul class="dropdown-menu shadow border rounded-3 p-1 fs-11" style="min-width: 140px;">
-                                                    <li>
-                                                        <button
-                                                            type="button"
-                                                            class="dropdown-item rounded py-1 px-2"
-                                                            :class="{ 'text-primary fw-bold': member.role === 'admin' }"
-                                                            @click="updateMemberRole(member, 'admin')"
-                                                        >
-                                                            Administrator
-                                                        </button>
-                                                    </li>
-                                                    <li>
-                                                        <button
-                                                            type="button"
-                                                            class="dropdown-item rounded py-1 px-2"
-                                                            :class="{ 'text-secondary fw-bold': member.role === 'member' }"
-                                                            @click="updateMemberRole(member, 'member')"
-                                                        >
-                                                            Anggota (Member)
-                                                        </button>
-                                                    </li>
-                                                </ul>
+
+                                                <!-- Custom Vue Dropdown Menu -->
+                                                <div
+                                                    v-if="activeRoleMenuMemberId === member.id"
+                                                    class="position-absolute start-0 mt-1 bg-body border border-secondary-subtle rounded-3 shadow-lg p-1"
+                                                    style="min-width: 170px; top: 100%; z-index: 1060;"
+                                                    @click.stop
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                                        :class="{ 'text-primary fw-bold bg-primary-subtle': member.role === 'admin' }"
+                                                        @click="updateMemberRole(member, 'admin')"
+                                                    >
+                                                        <span class="d-flex align-items-center gap-2">
+                                                            <i class="ri-shield-user-line text-primary"></i> Administrator
+                                                        </span>
+                                                        <i v-if="member.role === 'admin'" class="ri-check-line text-primary"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                                        :class="{ 'text-secondary fw-bold bg-secondary-subtle': member.role === 'member' }"
+                                                        @click="updateMemberRole(member, 'member')"
+                                                    >
+                                                        <span class="d-flex align-items-center gap-2">
+                                                            <i class="ri-user-line text-secondary"></i> Anggota (Member)
+                                                        </span>
+                                                        <i v-if="member.role === 'member'" class="ri-check-line text-secondary"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                                        :class="{ 'text-info fw-bold bg-info-subtle': member.role === 'viewer' }"
+                                                        @click="updateMemberRole(member, 'viewer')"
+                                                    >
+                                                        <span class="d-flex align-items-center gap-2">
+                                                            <i class="ri-eye-line text-info"></i> Pengamat (Viewer)
+                                                        </span>
+                                                        <i v-if="member.role === 'viewer'" class="ri-check-line text-info"></i>
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             <!-- Jika tidak punya akses ubah: Tampilkan Badge -->

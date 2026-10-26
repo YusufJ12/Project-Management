@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { confirmDelete, confirmAction, showToast, showWarning } from '@/Utils/alert';
@@ -169,21 +169,59 @@ const submitAddMember = () => {
     });
 };
 
+const getSpaceRoleLabel = (role) => {
+    switch (role) {
+        case 'manager':
+            return 'Manajer Space';
+        case 'viewer':
+            return 'Pengamat (Viewer)';
+        default:
+            return 'Anggota (Member)';
+    }
+};
+
+const activeRoleMenuMemberId = ref(null);
+
+const toggleRoleMenu = (memberId) => {
+    activeRoleMenuMemberId.value = activeRoleMenuMemberId.value === memberId ? null : memberId;
+};
+
+const closeAllRoleMenus = () => {
+    activeRoleMenuMemberId.value = null;
+};
+
+onMounted(() => {
+    window.addEventListener('click', closeAllRoleMenus);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('click', closeAllRoleMenus);
+});
+
 const updateMemberRole = async (member, newRole) => {
-    const roleLabel = newRole === 'manager' ? 'Manajer Space' : 'Anggota (Member)';
+    activeRoleMenuMemberId.value = null;
+    const oldRole = member.pivot?.role || 'member';
+    if (newRole === oldRole) return;
+
+    const roleLabel = getSpaceRoleLabel(newRole);
     const confirmed = await confirmAction({
         title: 'Ubah Peran?',
         text: `Ubah peran ${member.name} menjadi ${roleLabel}?`,
         confirmButtonText: 'Ya, Ubah Peran',
     });
     if (confirmed) {
+        if (member.pivot) member.pivot.role = newRole;
+
         router.put(`/spaces/${activeSpace.value.id}/members/${member.id}`, {
             role: newRole,
         }, {
             preserveScroll: true,
             onSuccess: () => {
-                showToast(`Peran ${member.name} berhasil diubah!`, 'success');
-                if (member.pivot) member.pivot.role = newRole;
+                showToast(`Peran ${member.name} berhasil diubah menjadi ${roleLabel}!`, 'success');
+            },
+            onError: () => {
+                if (member.pivot) member.pivot.role = oldRole;
+                showToast('Gagal mengubah peran anggota.', 'error');
             },
         });
     }
@@ -662,7 +700,7 @@ const removeMemberFromSpace = async (member) => {
                             <span class="fs-11 text-muted">Hanya anggota berikut yang memiliki izin mengakses Space ini</span>
                         </div>
 
-                        <div class="table-responsive border border-secondary-subtle rounded-3">
+                        <div class="table-responsive border border-secondary-subtle rounded-3" style="min-height: 200px; overflow-y: visible;">
                             <table class="table table-hover align-middle mb-0">
                                 <thead class="bg-light-subtle fs-11 text-muted text-uppercase border-bottom">
                                     <tr>
@@ -685,12 +723,65 @@ const removeMemberFromSpace = async (member) => {
                                             </div>
                                         </td>
                                         <td>
-                                            <span
-                                                class="badge rounded-pill px-2 py-1 fs-10 text-capitalize"
-                                                :class="member.pivot?.role === 'manager' ? 'bg-danger-subtle text-danger border border-danger-subtle' : 'bg-primary-subtle text-primary border border-primary-subtle'"
-                                            >
-                                                {{ member.pivot?.role || 'member' }}
-                                            </span>
+                                            <div class="position-relative d-inline-block">
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm rounded-pill px-2 py-0 fs-11 fw-semibold d-inline-flex align-items-center gap-1 border shadow-2xs transition-all cursor-pointer"
+                                                    :class="member.pivot?.role === 'manager' 
+                                                        ? 'text-danger bg-danger-subtle border-danger-subtle' 
+                                                        : (member.pivot?.role === 'viewer' 
+                                                            ? 'text-info bg-info-subtle border-info-subtle' 
+                                                            : 'text-primary bg-primary-subtle border-primary-subtle')"
+                                                    style="height: 24px;"
+                                                    @click.stop="toggleRoleMenu(member.id)"
+                                                    title="Klik untuk ubah peran anggota"
+                                                >
+                                                    <span>{{ getSpaceRoleLabel(member.pivot?.role) }}</span>
+                                                    <i class="ri-arrow-down-s-line fs-11 text-muted" :style="{ transform: activeRoleMenuMemberId === member.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }"></i>
+                                                </button>
+
+                                                <!-- Custom Vue Dropdown Menu -->
+                                                <div
+                                                    v-if="activeRoleMenuMemberId === member.id"
+                                                    class="position-absolute start-0 mt-1 bg-body border border-secondary-subtle rounded-3 shadow-lg p-1"
+                                                    style="min-width: 170px; top: 100%; z-index: 1060;"
+                                                    @click.stop
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                                        :class="{ 'text-danger fw-bold bg-danger-subtle': member.pivot?.role === 'manager' }"
+                                                        @click="updateMemberRole(member, 'manager')"
+                                                    >
+                                                        <span class="d-flex align-items-center gap-2">
+                                                            <i class="ri-shield-user-line text-danger"></i> Manajer Space
+                                                        </span>
+                                                        <i v-if="member.pivot?.role === 'manager'" class="ri-check-line text-danger"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                                        :class="{ 'text-primary fw-bold bg-primary-subtle': (!member.pivot?.role || member.pivot?.role === 'member') }"
+                                                        @click="updateMemberRole(member, 'member')"
+                                                    >
+                                                        <span class="d-flex align-items-center gap-2">
+                                                            <i class="ri-user-line text-primary"></i> Anggota (Member)
+                                                        </span>
+                                                        <i v-if="!member.pivot?.role || member.pivot?.role === 'member'" class="ri-check-line text-primary"></i>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="dropdown-item w-100 text-start border-0 bg-transparent rounded py-1 px-2 fs-11 d-flex align-items-center justify-content-between"
+                                                        :class="{ 'text-info fw-bold bg-info-subtle': member.pivot?.role === 'viewer' }"
+                                                        @click="updateMemberRole(member, 'viewer')"
+                                                    >
+                                                        <span class="d-flex align-items-center gap-2">
+                                                            <i class="ri-eye-line text-info"></i> Pengamat (Viewer)
+                                                        </span>
+                                                        <i v-if="member.pivot?.role === 'viewer'" class="ri-check-line text-info"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </td>
                                         <td class="text-end">
                                             <button

@@ -75,17 +75,18 @@ class Task extends Model
 
     /**
      * Cascade timeline changes to dependent tasks recursively with cycle detection.
+     * Returns an array of all tasks that were shifted.
      */
-    public function cascadeTimeline(array &$visited = []): void
+    public function cascadeTimeline(array &$visited = [], array &$cascadedTasks = []): array
     {
         if (isset($visited[$this->id])) {
-            return;
+            return $cascadedTasks;
         }
         $visited[$this->id] = true;
 
         $prereqEnd = $this->due_at ?? $this->start_date;
         if (! $prereqEnd) {
-            return;
+            return $cascadedTasks;
         }
 
         $dependents = $this->dependents()->get();
@@ -131,6 +132,13 @@ class Task extends Model
                     'due_at' => $newDue ? $newDue->toDateString() : null,
                 ]);
 
+                $cascadedTasks[] = $dependent->fresh([
+                    'stage',
+                    'assignees:id,name,email',
+                    'dependencies:id,title,start_date,due_at',
+                    'dependents:id,title,start_date,due_at',
+                ]);
+
                 // Catat log aktivitas pergeseran berantai pada dependent task
                 $depSpace = $dependent->list?->space;
                 if ($depSpace) {
@@ -154,9 +162,11 @@ class Task extends Model
                 }
 
                 // Recursively cascade to dependent's dependents
-                $dependent->cascadeTimeline($visited);
+                $dependent->cascadeTimeline($visited, $cascadedTasks);
             }
         }
+
+        return $cascadedTasks;
     }
 
     /**

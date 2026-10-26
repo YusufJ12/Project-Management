@@ -336,8 +336,9 @@ class TaskApiController extends Controller
         $newStartDate = $task->start_date ? Carbon::parse($task->start_date)->toDateString() : null;
         $newDueAt = $task->due_at ? Carbon::parse($task->due_at)->toDateString() : null;
 
+        $cascadedTasks = [];
         if ($oldStartDate !== $newStartDate || $oldDueAt !== $newDueAt) {
-            $task->cascadeTimeline();
+            $cascadedTasks = $task->cascadeTimeline();
         }
 
         // Email notification jika berubah ke status done
@@ -349,9 +350,12 @@ class TaskApiController extends Controller
 
         $task->load(['stage', 'assignees', 'checklists', 'attachments', 'dependencies.stage']);
 
-        DB::afterCommit(function () use ($task, $user, $space) {
+        DB::afterCommit(function () use ($task, $user, $space, $cascadedTasks) {
             try {
                 broadcast(new TaskUpdatedEvent($task, $user, $space->id));
+                foreach ($cascadedTasks as $cTask) {
+                    broadcast(new TaskUpdatedEvent($cTask, $user, $space->id));
+                }
             } catch (\Throwable $e) {
                 report($e);
             }
@@ -359,8 +363,11 @@ class TaskApiController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Task berhasil diperbarui.',
+            'message' => count($cascadedTasks) > 0
+                ? 'Task berhasil diperbarui beserta ' . count($cascadedTasks) . ' tugas dependensi.'
+                : 'Task berhasil diperbarui.',
             'data' => new TaskResource($task),
+            'cascaded_tasks' => TaskResource::collection($cascadedTasks),
         ]);
     }
 
