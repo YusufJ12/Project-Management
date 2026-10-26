@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
+import echo from '@/echo';
 
 const page = usePage();
 const user = computed(() => page.props.auth?.user || { name: 'User', email: '' });
@@ -24,9 +25,17 @@ const toggleTheme = () => {
 // Sidebar Toggle Management
 const isSidebarMinimized = ref(false);
 const isMobileSidebarOpen = ref(false);
+const isMobileScreen = ref(false);
+
+const updateScreenSize = () => {
+    if (typeof window !== 'undefined') {
+        isMobileScreen.value = window.innerWidth < 992;
+    }
+};
 
 const toggleSidebar = () => {
-    if (typeof window !== 'undefined' && window.innerWidth < 992) {
+    updateScreenSize();
+    if (isMobileScreen.value) {
         isMobileSidebarOpen.value = !isMobileSidebarOpen.value;
     } else {
         isSidebarMinimized.value = !isSidebarMinimized.value;
@@ -50,6 +59,7 @@ const handleSidebarNavClick = (event) => {
 
 const handleResize = () => {
     if (typeof window === 'undefined') return;
+    updateScreenSize();
     if (window.innerWidth >= 992) {
         isMobileSidebarOpen.value = false;
         const savedSidebar = localStorage.getItem('data-sidebar');
@@ -77,22 +87,129 @@ const logout = () => {
     router.post('/logout');
 };
 
-// Notifications
-const notifications = computed(() => page.props.notifications?.list || []);
-const unreadNotificationCount = computed(() => page.props.notifications?.unread_count || 0);
+// Notifications & Realtime Bell System
+const localNotifications = ref([...(page.props.notifications?.list || [])]);
+const localUnreadCount = ref(page.props.notifications?.unread_count || 0);
+
+watch(
+    () => page.props.notifications,
+    (newVal) => {
+        if (newVal) {
+            localNotifications.value = [...(newVal.list || [])];
+            localUnreadCount.value = newVal.unread_count || 0;
+        }
+    },
+    { deep: true }
+);
+
+// Floating Toast Notifications (Teams/Slack-style in-app popup)
+const floatingToasts = ref([]);
+
+const pushFloatingToast = (toast) => {
+    const id = toast.id || ('toast_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+    const newToast = {
+        id,
+        title: toast.title || 'Notifikasi',
+        message: toast.message || '',
+        actor_name: toast.actor_name || 'Rekan Tim',
+        actor_avatar: toast.actor_avatar || null,
+        url: toast.url || null,
+        time: 'Baru saja',
+        type: toast.type || 'info',
+    };
+
+    floatingToasts.value.unshift(newToast);
+
+    // Auto-dismiss after 6.5s
+    setTimeout(() => {
+        removeFloatingToast(id);
+    }, 6500);
+};
+
+const removeFloatingToast = (id) => {
+    floatingToasts.value = floatingToasts.value.filter((t) => t.id !== id);
+};
+
+const clickToast = (toast) => {
+    removeFloatingToast(toast.id);
+    if (toast.url) {
+        router.visit(toast.url);
+    }
+};
 
 const markNotificationRead = (notif) => {
+    if (!notif.read_at) {
+        notif.read_at = new Date().toISOString();
+        if (localUnreadCount.value > 0) localUnreadCount.value--;
+    }
     router.post(`/notifications/${notif.id}/read`, {}, {
+        preserveScroll: true,
+        only: ['notifications'],
+    });
+    if (notif.data?.url) {
+        router.visit(notif.data.url);
+    }
+};
+
+const markAllNotificationsRead = () => {
+    localNotifications.value.forEach((n) => {
+        n.read_at = new Date().toISOString();
+    });
+    localUnreadCount.value = 0;
+    router.post('/notifications/read-all', {}, {
         preserveScroll: true,
         only: ['notifications'],
     });
 };
 
-const markAllNotificationsRead = () => {
-    router.post('/notifications/read-all', {}, {
-        preserveScroll: true,
-        only: ['notifications'],
+// Realtime User Notification Echo Subscription
+let userEchoChannel = null;
+
+const initUserEcho = () => {
+    const echoInstance = window.Echo || echo;
+    const userId = page.props.auth?.user?.id;
+    if (!echoInstance || !userId) return;
+
+    userEchoChannel = echoInstance.private(`App.Models.User.${userId}`);
+    userEchoChannel.listen('NotificationSentEvent', (event) => {
+        const notif = event.notification;
+        if (!notif) return;
+
+        // Deduplicate in localNotifications
+        const notifId = String(notif.id);
+        const exists = localNotifications.value.some((n) => String(n.id) === notifId);
+        if (!exists) {
+            localNotifications.value.unshift(notif);
+        }
+
+        if (event.unread_count !== undefined) {
+            localUnreadCount.value = event.unread_count;
+        } else {
+            localUnreadCount.value++;
+        }
+
+        // Push floating Teams-style toast
+        pushFloatingToast({
+            id: notif.id,
+            title: notif.data?.title || 'Notifikasi Baru',
+            message: notif.data?.message || '',
+            actor_name: notif.data?.actor_name || 'Rekan Tim',
+            actor_avatar: notif.data?.actor_avatar || null,
+            url: notif.data?.url || null,
+            type: notif.type || 'info',
+        });
     });
+};
+
+const cleanupUserEcho = () => {
+    const echoInstance = window.Echo || echo;
+    const userId = page.props.auth?.user?.id;
+    if (echoInstance && userId) {
+        try {
+            echoInstance.leave(`App.Models.User.${userId}`);
+            echoInstance.leave(`user.${userId}`);
+        } catch (e) {}
+    }
 };
 
 // Flash Alerts System
@@ -156,6 +273,7 @@ onMounted(() => {
     document.documentElement.setAttribute('data-bs-theme', savedTheme);
 
     // Sidebar setup
+    updateScreenSize();
     if (window.innerWidth >= 992) {
         const savedSidebar = localStorage.getItem('data-sidebar');
         if (savedSidebar === 'icon') {
@@ -170,11 +288,13 @@ onMounted(() => {
     }
 
     checkFlash();
+    initUserEcho();
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', handleScroll);
 });
 
 onUnmounted(() => {
+    cleanupUserEcho();
     if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize);
         window.removeEventListener('scroll', handleScroll);
@@ -190,28 +310,29 @@ onUnmounted(() => {
             <div class="container-fluid w-100">
                 <div class="d-flex align-items-center">
                     <div class="me-auto">
-                        <div class="d-inline-flex align-items-center gap-3">
+                        <div class="d-inline-flex align-items-center gap-2 gap-sm-3">
                             <button
                                 type="button"
                                 @click="toggleSidebar"
                                 class="vertical-toggle btn btn-light-light text-muted icon-btn fs-5 rounded-pill"
                                 id="toggleSidebar"
-                                :title="isSidebarMinimized ? 'Maximize sidebar' : 'Minimize sidebar'"
+                                :title="isMobileScreen ? (isMobileSidebarOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi') : (isSidebarMinimized ? 'Maximize sidebar' : 'Minimize sidebar')"
                             >
-                                <i :class="isSidebarMinimized ? 'bi bi-arrow-bar-right header-icon' : 'bi bi-arrow-bar-left header-icon'"></i>
+                                <i v-if="isMobileScreen" :class="isMobileSidebarOpen ? 'ri-close-line fs-18 text-body' : 'ri-menu-2-line fs-18 text-body'"></i>
+                                <i v-else :class="isSidebarMinimized ? 'bi bi-arrow-bar-right header-icon' : 'bi bi-arrow-bar-left header-icon'"></i>
                             </button>
 
                             <!-- Workspace Switcher Dropdown in Header -->
                             <div v-if="currentWorkspace" class="dropdown">
                                 <button
-                                    class="btn btn-light border rounded-pill btn-sm d-flex align-items-center gap-2 px-3 py-1 fs-12"
+                                    class="btn btn-light border rounded-pill btn-sm d-flex align-items-center gap-1.5 px-2.5 px-sm-3 py-1 fs-12"
                                     type="button"
                                     data-bs-toggle="dropdown"
                                     aria-expanded="false"
                                 >
                                     <i class="ri-community-line text-primary"></i>
-                                    <span class="fw-semibold text-truncate" style="max-width: 160px;">{{ currentWorkspace.name }}</span>
-                                    <i class="bi bi-chevron-down fs-10 text-muted"></i>
+                                    <span class="fw-semibold text-truncate" style="max-width: min(150px, 26vw);">{{ currentWorkspace.name }}</span>
+                                    <i class="bi bi-chevron-down fs-10 text-muted d-none d-sm-inline-block"></i>
                                 </button>
                                 <ul class="dropdown-menu shadow border rounded-3 p-2" style="min-width: 220px;">
                                     <li class="dropdown-header fs-11 text-muted text-uppercase fw-bold px-2 py-1">Pilih Ruang Kerja</li>
@@ -274,22 +395,22 @@ onUnmounted(() => {
                             >
                                 <i class="ri-notification-3-line fs-5"></i>
                                 <span
-                                    v-if="unreadNotificationCount > 0"
+                                    v-if="localUnreadCount > 0"
                                     class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger fs-10"
                                 >
-                                    {{ unreadNotificationCount }}
+                                    {{ localUnreadCount }}
                                 </span>
                             </button>
                             <div class="dropdown-menu dropdown-menu-end shadow-lg border rounded-3 p-0 overflow-hidden" style="width: 320px;">
                                 <div class="p-3 bg-light-subtle border-bottom d-flex align-items-center justify-content-between">
                                     <div class="d-flex align-items-center gap-2">
                                         <h6 class="mb-0 fw-bold fs-13">Notifikasi</h6>
-                                        <span v-if="unreadNotificationCount > 0" class="badge bg-primary-subtle text-primary rounded-pill fs-10">
-                                            {{ unreadNotificationCount }} Baru
+                                        <span v-if="localUnreadCount > 0" class="badge bg-primary-subtle text-primary rounded-pill fs-10">
+                                            {{ localUnreadCount }} Baru
                                         </span>
                                     </div>
                                     <button
-                                        v-if="unreadNotificationCount > 0"
+                                        v-if="localUnreadCount > 0"
                                         type="button"
                                         class="btn btn-sm btn-link p-0 text-decoration-none fs-11 text-primary"
                                         @click="markAllNotificationsRead"
@@ -298,9 +419,9 @@ onUnmounted(() => {
                                     </button>
                                 </div>
                                 <div class="overflow-auto" style="max-height: 280px;">
-                                    <div v-if="notifications.length">
+                                    <div v-if="localNotifications.length">
                                         <div
-                                            v-for="notif in notifications"
+                                            v-for="notif in localNotifications"
                                             :key="notif.id"
                                             class="p-3 border-bottom d-flex align-items-start gap-2 hover-bg-light cursor-pointer"
                                             :class="{ 'bg-primary-subtle bg-opacity-25': !notif.read_at }"
@@ -330,15 +451,15 @@ onUnmounted(() => {
 
                         <!-- User Profile Dropdown -->
                         <div class="dropdown pe-dropdown-mega ms-1">
-                            <button class="header-profile-btn btn gap-2 text-start d-flex align-items-center" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-semibold fs-14" style="width: 36px; height: 36px;">
+                            <button class="header-profile-btn btn gap-2 text-start d-flex align-items-center p-1 p-sm-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-semibold fs-14 flex-shrink-0" style="width: 34px; height: 34px;">
                                     {{ user.name ? user.name.charAt(0).toUpperCase() : 'U' }}
                                 </div>
                                 <div class="d-none d-lg-block pe-1">
-                                    <span class="d-block mb-0 fs-13 fw-semibold">{{ user.name }}</span>
-                                    <span class="d-block mb-0 fs-12 text-muted">{{ user.email }}</span>
+                                    <span class="d-block mb-0 fs-13 fw-semibold text-truncate" style="max-width: 140px;">{{ user.name }}</span>
+                                    <span class="d-block mb-0 fs-12 text-muted text-truncate" style="max-width: 140px;">{{ user.email }}</span>
                                 </div>
-                                <i class="bi bi-chevron-down fs-11 text-muted ms-1"></i>
+                                <i class="bi bi-chevron-down fs-11 text-muted ms-1 d-none d-sm-inline-block"></i>
                             </button>
                             <div class="dropdown-menu dropdown-menu-end p-3 shadow border rounded-3" style="min-width: 220px;">
                                 <div class="border-bottom pb-2 mb-2">
@@ -363,14 +484,25 @@ onUnmounted(() => {
 
         <!-- Sidebar -->
         <aside class="pe-app-sidebar" id="sidebar" :class="{ show: isMobileSidebarOpen }" @click="handleSidebarNavClick">
-            <div class="pe-app-sidebar-logo d-flex align-items-center position-relative">
-                <Link href="/dashboard" class="sidebar-brand-link text-decoration-none d-flex align-items-center gap-2 w-100 px-3">
+            <div class="pe-app-sidebar-logo d-flex align-items-center justify-content-between position-relative px-3">
+                <Link href="/dashboard" class="sidebar-brand-link text-decoration-none d-flex align-items-center gap-2">
                     <img src="/admin-assets/images/ns.png" alt="NexSphere Logo" class="sidebar-brand-icon" style="height: 32px; width: 32px; object-fit: contain; flex-shrink: 0;" />
                     <div class="sidebar-brand-text d-flex flex-column text-truncate">
                         <span class="lh-1 text-primary fw-bold fs-16">PROJECT<span class="text-body">SPHERE</span></span>
                         <span class="fs-10 text-muted fw-semibold ls-1">NEXSPHERE PM</span>
                     </div>
                 </Link>
+                <!-- Explicit Close Button on Mobile Drawer -->
+                <button
+                    v-if="isMobileScreen"
+                    type="button"
+                    class="btn btn-sm btn-light border-0 rounded-circle text-muted p-1 d-flex align-items-center justify-content-center"
+                    style="width: 30px; height: 30px;"
+                    @click.stop="closeMobileSidebar"
+                    title="Tutup Menu Navigasi"
+                >
+                    <i class="ri-close-line fs-18"></i>
+                </button>
             </div>
 
             <nav class="pe-app-sidebar-menu nav nav-pills" id="sidebar-simplebar">
@@ -511,5 +643,107 @@ onUnmounted(() => {
         >
             <i class="ri-arrow-up-line fs-18 text-primary"></i>
         </div>
+
+        <!-- Floating Teams-Style In-App Notification Toasts -->
+        <div class="floating-toasts-container" aria-live="polite">
+            <TransitionGroup name="toast-slide">
+                <div
+                    v-for="toast in floatingToasts"
+                    :key="toast.id"
+                    class="floating-toast-card d-flex align-items-start gap-3 p-3 rounded-3 border bg-body shadow-lg"
+                    @click="clickToast(toast)"
+                    role="alert"
+                >
+                    <!-- Avatar / Icon -->
+                    <div class="toast-avatar-box flex-shrink-0">
+                        <div v-if="toast.actor_avatar" class="rounded-circle overflow-hidden shadow-2xs" style="width: 38px; height: 38px;">
+                            <img :src="toast.actor_avatar" alt="Avatar" class="w-100 h-100 object-fit-cover" />
+                        </div>
+                        <div v-else class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold fs-14 shadow-2xs" style="width: 38px; height: 38px;">
+                            {{ (toast.actor_name || 'N').charAt(0).toUpperCase() }}
+                        </div>
+                    </div>
+
+                    <!-- Body -->
+                    <div class="flex-grow-1 overflow-hidden pe-1">
+                        <div class="d-flex align-items-center justify-content-between mb-1 gap-2">
+                            <span class="fs-12 fw-bold text-body text-truncate">{{ toast.title }}</span>
+                            <span class="fs-10 text-muted text-nowrap">{{ toast.time }}</span>
+                        </div>
+                        <div class="fs-11 text-secondary text-break mb-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35;">
+                            {{ toast.message }}
+                        </div>
+                        <div v-if="toast.url" class="fs-11 fw-semibold text-primary d-flex align-items-center gap-1">
+                            <span>Buka & Tinjau</span>
+                            <i class="ri-arrow-right-line fs-11"></i>
+                        </div>
+                    </div>
+
+                    <!-- Dismiss X -->
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-link text-muted p-0 border-0 flex-shrink-0 hover-text-dark"
+                        @click.stop="removeFloatingToast(toast.id)"
+                        title="Tutup Notifikasi"
+                    >
+                        <i class="ri-close-line fs-15"></i>
+                    </button>
+                </div>
+            </TransitionGroup>
+        </div>
     </div>
 </template>
+
+<style scoped>
+.floating-toasts-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 1090;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 380px;
+    width: 100%;
+    pointer-events: none;
+}
+
+.floating-toast-card {
+    pointer-events: auto;
+    cursor: pointer;
+    position: relative;
+    border-left: 4px solid var(--bs-primary) !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.16), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.floating-toast-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.22), 0 10px 12px -6px rgba(0, 0, 0, 0.14) !important;
+}
+
+/* Slide in / out animation */
+.toast-slide-enter-active,
+.toast-slide-leave-active {
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-slide-enter-from {
+    opacity: 0;
+    transform: translateX(80px) scale(0.92);
+}
+
+.toast-slide-leave-to {
+    opacity: 0;
+    transform: translateX(80px) scale(0.92);
+}
+
+@media (max-width: 576px) {
+    .floating-toasts-container {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        max-width: calc(100% - 24px);
+    }
+}
+</style>

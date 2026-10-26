@@ -846,7 +846,13 @@ const handleFileUpload = async (event) => {
             if (!selectedTask.value.attachments) {
                 selectedTask.value.attachments = [];
             }
-            selectedTask.value.attachments.unshift(data.attachment);
+            if (data.attachment) {
+                const attId = String(data.attachment.id);
+                const exists = selectedTask.value.attachments.some((a) => String(a.id) === attId);
+                if (!exists) {
+                    selectedTask.value.attachments.unshift(data.attachment);
+                }
+            }
             if (fileInputRef.value) fileInputRef.value.value = '';
             showToast('Berkas lampiran berhasil diunggah!', 'success');
         }
@@ -913,7 +919,13 @@ const addComment = async () => {
             if (!selectedTask.value.comments) {
                 selectedTask.value.comments = [];
             }
-            selectedTask.value.comments.unshift(data.comment);
+            if (data.comment) {
+                const commentId = String(data.comment.id);
+                const exists = selectedTask.value.comments.some((c) => String(c.id) === commentId);
+                if (!exists) {
+                    selectedTask.value.comments.unshift(data.comment);
+                }
+            }
             newCommentContent.value = '';
             showToast('Komentar berhasil dikirim!', 'success');
         }
@@ -967,7 +979,14 @@ const reconnectEcho = () => {
     connectionState.value = 'connecting';
     const echoInstance = window.Echo || echo;
     if (echoInstance?.connector?.pusher) {
-        echoInstance.connector.pusher.connect();
+        try {
+            echoInstance.connector.pusher.disconnect();
+        } catch (e) {}
+        setTimeout(() => {
+            try {
+                echoInstance.connector.pusher.connect();
+            } catch (e) {}
+        }, 200);
     }
 };
 
@@ -1168,6 +1187,26 @@ const handleTaskMoved = (event) => {
             if (modalCleanSnapshot.value) {
                 modalCleanSnapshot.value.stage_id = targetStageIdNum;
             }
+
+            // Append realtime audit log entry in task modal
+            if (event.user && targetStage) {
+                if (!taskActivityLogs.value) taskActivityLogs.value = [];
+                taskActivityLogs.value.unshift({
+                    id: 'act_' + Date.now(),
+                    action: 'task_moved',
+                    actor: {
+                        id: event.user.id,
+                        name: event.user.name,
+                        email: event.user.email,
+                    },
+                    created_at: new Date().toISOString(),
+                    metadata: {
+                        title: movedTask.title,
+                        new_stage: targetStage.name,
+                        is_done: targetStage.is_done,
+                    },
+                });
+            }
         }
     } else {
         syncSpaceData();
@@ -1255,12 +1294,13 @@ const handleTaskCommentAdded = (event) => {
     const taskId = event.taskId || event.task_id || comment.task_id;
     if (!comment || !taskId) return;
     const taskIdNum = parseInt(taskId);
+    const commentId = String(comment.id);
 
     if (selectedTask.value && selectedTask.value.id === taskIdNum) {
         if (!selectedTask.value.comments) {
             selectedTask.value.comments = [];
         }
-        const exists = selectedTask.value.comments.some((c) => c.id === comment.id);
+        const exists = selectedTask.value.comments.some((c) => String(c.id) === commentId);
         if (!exists) {
             selectedTask.value.comments.unshift(comment);
         }
@@ -1271,13 +1311,11 @@ const handleTaskCommentAdded = (event) => {
             const foundTask = (stage.tasks || []).find((t) => t.id === taskIdNum);
             if (foundTask) {
                 if (!foundTask.comments) foundTask.comments = [];
-                const exists = foundTask.comments.some((c) => c.id === comment.id);
+                const exists = foundTask.comments.some((c) => String(c.id) === commentId);
                 if (!exists) {
                     foundTask.comments.unshift(comment);
                 }
-                if (foundTask.comments_count !== undefined) {
-                    foundTask.comments_count = foundTask.comments.length;
-                }
+                foundTask.comments_count = foundTask.comments.length;
             }
         }
     }
@@ -1288,12 +1326,13 @@ const handleTaskAttachmentUploaded = (event) => {
     const taskId = event.taskId || event.task_id || attachment.task_id;
     if (!attachment || !taskId) return;
     const taskIdNum = parseInt(taskId);
+    const attachmentId = String(attachment.id);
 
     if (selectedTask.value && selectedTask.value.id === taskIdNum) {
         if (!selectedTask.value.attachments) {
             selectedTask.value.attachments = [];
         }
-        const exists = selectedTask.value.attachments.some((a) => a.id === attachment.id);
+        const exists = selectedTask.value.attachments.some((a) => String(a.id) === attachmentId);
         if (!exists) {
             selectedTask.value.attachments.unshift(attachment);
         }
@@ -1304,7 +1343,7 @@ const handleTaskAttachmentUploaded = (event) => {
             const foundTask = (stage.tasks || []).find((t) => t.id === taskIdNum);
             if (foundTask) {
                 if (!foundTask.attachments) foundTask.attachments = [];
-                const exists = foundTask.attachments.some((a) => a.id === attachment.id);
+                const exists = foundTask.attachments.some((a) => String(a.id) === attachmentId);
                 if (!exists) {
                     foundTask.attachments.unshift(attachment);
                 }
@@ -1418,23 +1457,14 @@ const initEcho = () => {
     echoChannel = echoInstance.private(channelName);
 
     echoChannel
-        .listen('.TaskCreatedEvent', handleTaskCreated)
         .listen('TaskCreatedEvent', handleTaskCreated)
-        .listen('.TaskUpdatedEvent', handleTaskUpdated)
         .listen('TaskUpdatedEvent', handleTaskUpdated)
-        .listen('.TaskMovedEvent', handleTaskMoved)
         .listen('TaskMovedEvent', handleTaskMoved)
-        .listen('.TaskDeletedEvent', handleTaskDeleted)
         .listen('TaskDeletedEvent', handleTaskDeleted)
-        .listen('.TaskChecklistToggledEvent', handleTaskChecklistToggled)
         .listen('TaskChecklistToggledEvent', handleTaskChecklistToggled)
-        .listen('.TaskCommentAddedEvent', handleTaskCommentAdded)
         .listen('TaskCommentAddedEvent', handleTaskCommentAdded)
-        .listen('.TaskAttachmentUploadedEvent', handleTaskAttachmentUploaded)
         .listen('TaskAttachmentUploadedEvent', handleTaskAttachmentUploaded)
-        .listen('.TaskAttachmentDeletedEvent', handleTaskAttachmentDeleted)
         .listen('TaskAttachmentDeletedEvent', handleTaskAttachmentDeleted)
-        .listen('.SpaceStageChangedEvent', handleSpaceStageChanged)
         .listen('SpaceStageChangedEvent', handleSpaceStageChanged);
 };
 
@@ -1656,7 +1686,7 @@ const filteredTasks = computed(() => {
                             <span class="text-muted">/</span>
                             <span class="badge bg-primary-subtle text-primary fs-11">{{ space.workspace?.name }}</span>
                         </div>
-                        <h4 class="fw-bold mb-1 d-flex align-items-center gap-2">
+                        <h4 class="fw-bold mb-1 d-flex align-items-center flex-wrap gap-2">
                             <span>{{ space.name }}</span>
                             <span
                                 class="badge rounded-pill px-2 py-1 fs-11"
@@ -1727,7 +1757,7 @@ const filteredTasks = computed(() => {
                 </div>
 
                 <!-- Tabs Navigation -->
-                <ul class="nav nav-tabs border-bottom-0 mt-4 mb-0">
+                <ul class="nav nav-tabs border-bottom-0 mt-4 mb-0 flex-nowrap overflow-x-auto text-nowrap pb-1">
                     <li class="nav-item">
                         <button
                             type="button"
@@ -2589,10 +2619,10 @@ const filteredTasks = computed(() => {
             role="dialog"
             style="z-index: 1055;"
         >
-            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable m-2 m-sm-auto">
                 <div class="modal-content rounded-3 border-0 shadow-lg">
                     <!-- Modal Header -->
-                    <div class="modal-header border-bottom px-4 py-3 bg-light-subtle">
+                    <div class="modal-header border-bottom px-3 px-sm-4 py-3 bg-light-subtle">
                         <div class="d-flex align-items-center gap-2 flex-grow-1 me-3">
                             <span class="badge rounded-pill px-2 py-1 fs-11 text-uppercase" :class="priorityColor(taskPriority)">
                                 {{ taskPriority }}
@@ -2611,7 +2641,7 @@ const filteredTasks = computed(() => {
                     </div>
 
                     <!-- Modal Body (Two-column layout) -->
-                    <div class="modal-body p-4">
+                    <div class="modal-body p-3 p-sm-4">
                         <!-- Viewer Read-Only Notice -->
                         <div v-if="isViewer" class="alert alert-info py-2 px-3 fs-12 mb-3 d-flex align-items-center gap-2 rounded-3 border-0 bg-info-subtle text-info-emphasis">
                             <i class="ri-eye-line fs-16"></i>
@@ -2622,7 +2652,7 @@ const filteredTasks = computed(() => {
                             <!-- Left Column: Description, Checklists, Attachments, Comments -->
                             <div class="col-lg-8">
                                 <!-- Tabs Navigation inside modal -->
-                                <ul class="nav nav-pills mb-4 bg-light p-1 rounded-pill w-fit border">
+                                <ul class="nav nav-pills mb-4 bg-light p-1 rounded-pill w-fit border flex-nowrap overflow-x-auto text-nowrap">
                                     <li class="nav-item">
                                         <button
                                             type="button"
@@ -2795,8 +2825,8 @@ const filteredTasks = computed(() => {
                                             </div>
 
                                             <!-- Add Prerequisite Dropdown (if not viewer) -->
-                                            <div v-if="!isViewer && availablePrerequisiteTasks.length > 0" class="d-flex gap-2 align-items-center mt-2 pt-2 border-top">
-                                                <select v-model="selectedPrerequisiteTaskId" class="form-select form-select-sm rounded-pill fs-12 flex-grow-1">
+                                            <div v-if="!isViewer && availablePrerequisiteTasks.length > 0" class="d-flex flex-wrap gap-2 align-items-center mt-2 pt-2 border-top">
+                                                <select v-model="selectedPrerequisiteTaskId" class="form-select form-select-sm rounded-pill fs-12 flex-grow-1" style="min-width: 180px;">
                                                     <option value="">+ Pilih tugas prasyarat dari Space ini...</option>
                                                     <option v-for="t in availablePrerequisiteTasks" :key="t.id" :value="t.id">
                                                         {{ t.title }} ({{ t.stage_name || t.stage?.name || 'Status' }})
@@ -3066,7 +3096,7 @@ const filteredTasks = computed(() => {
                             </div>
 
                             <!-- Right Column: Sidebar Attributes -->
-                            <div class="col-lg-4 border-start">
+                            <div class="col-lg-4 border-start-lg border-top border-top-lg-0 pt-4 pt-lg-0">
                                 <div class="d-flex flex-column gap-3">
                                     <!-- Stage / Status -->
                                     <div>

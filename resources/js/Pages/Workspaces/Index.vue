@@ -321,7 +321,7 @@ const getRoleLabel = (role) => {
                                     <i class="ri-community-line"></i>
                                 </div>
                                 <div>
-                                    <h6 class="fw-bold mb-0 fs-15 text-body text-truncate" style="max-width: 170px;">
+                                    <h6 class="fw-bold mb-0 fs-15 text-body text-truncate flex-grow-1" style="max-width: min(220px, 35vw);" :title="ws.name">
                                         {{ ws.name }}
                                     </h6>
                                     <span class="fs-11 text-muted d-block">

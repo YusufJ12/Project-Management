@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\NotificationSentEvent;
 use App\Events\SpaceStageChangedEvent;
 use App\Events\TaskAttachmentDeletedEvent;
 use App\Events\TaskAttachmentUploadedEvent;
@@ -11,6 +12,7 @@ use App\Events\TaskCreatedEvent;
 use App\Events\TaskDeletedEvent;
 use App\Events\TaskMovedEvent;
 use App\Events\TaskUpdatedEvent;
+use App\Models\Notification;
 use App\Models\Space;
 use App\Models\Task;
 use App\Models\TaskAttachment;
@@ -107,6 +109,7 @@ class RealtimeBroadcastingTest extends TestCase
             TaskAttachmentUploadedEvent::class,
             TaskAttachmentDeletedEvent::class,
             SpaceStageChangedEvent::class,
+            NotificationSentEvent::class,
         ];
 
         foreach ($events as $eventClass) {
@@ -507,6 +510,103 @@ class RealtimeBroadcastingTest extends TestCase
         $response->assertStatus(200);
         Event::assertDispatched(TaskDeletedEvent::class, function ($event) use ($task) {
             return $event->taskId === $task->id;
+        });
+    }
+
+    public function test_notification_sent_event_channel_and_payload(): void
+    {
+        $notification = Notification::create([
+            'user_id' => $this->member->id,
+            'workspace_id' => $this->workspace->id,
+            'type' => 'comment_added',
+            'data' => [
+                'title' => 'Komentar Baru',
+                'message' => 'Halo ini komentar',
+            ],
+            'read_at' => null,
+        ]);
+
+        $event = new NotificationSentEvent($this->member->id, $notification, 3);
+        $channels = array_map(fn ($c) => $c->name, $event->broadcastOn());
+
+        $this->assertContains('private-App.Models.User.' . $this->member->id, $channels);
+        $this->assertContains('private-user.' . $this->member->id, $channels);
+
+        $payload = $event->broadcastWith();
+        $this->assertEquals(3, $payload['unread_count']);
+        $this->assertEquals('Komentar Baru', $payload['notification']['data']['title']);
+        $this->assertEquals($this->member->id, $payload['notification']['user_id']);
+    }
+
+    public function test_task_comment_creates_notification_and_broadcasts_to_assignee(): void
+    {
+        Event::fake([NotificationSentEvent::class, TaskCommentAddedEvent::class]);
+
+        $task = Task::create([
+            'list_id' => $this->list->id,
+            'stage_id' => $this->stage1->id,
+            'created_by' => $this->owner->id,
+            'title' => 'Design Architecture',
+            'priority' => 'high',
+            'position' => 1,
+        ]);
+        $task->assignees()->attach($this->member->id);
+
+        // Owner writes a comment
+        $response = $this->actingAs($this->owner)->postJson("/tasks/{$task->id}/comments", [
+            'content' => 'Tolong review spec ini secepatnya.',
+        ]);
+
+        $response->assertStatus(201);
+
+        // Member must receive an in-app Notification record
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $this->member->id,
+            'workspace_id' => $this->workspace->id,
+            'type' => 'comment_added',
+        ]);
+
+        // Owner (the author) must NOT receive a notification for their own comment
+        $this->assertDatabaseMissing('notifications', [
+            'user_id' => $this->owner->id,
+            'type' => 'comment_added',
+        ]);
+
+        Event::assertDispatched(NotificationSentEvent::class, function ($event) {
+            return $event->userId === $this->member->id;
+        });
+    }
+
+    public function test_task_move_creates_notification_for_assignees(): void
+    {
+        Event::fake([NotificationSentEvent::class, TaskMovedEvent::class]);
+
+        $task = Task::create([
+            'list_id' => $this->list->id,
+            'stage_id' => $this->stage1->id,
+            'created_by' => $this->owner->id,
+            'title' => 'Implement Feature',
+            'priority' => 'medium',
+            'position' => 1,
+        ]);
+        $task->assignees()->attach($this->member->id);
+
+        // Owner moves task to Done
+        $response = $this->actingAs($this->owner)->postJson("/tasks/{$task->id}/move", [
+            'stage_id' => $this->stage2->id,
+            'position' => 1,
+        ]);
+
+        $response->assertStatus(200);
+
+        // Member gets notified of stage change
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $this->member->id,
+            'type' => 'task_moved',
+        ]);
+
+        Event::assertDispatched(NotificationSentEvent::class, function ($event) {
+            return $event->userId === $this->member->id;
         });
     }
 }

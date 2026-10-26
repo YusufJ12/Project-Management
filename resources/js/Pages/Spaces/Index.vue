@@ -253,7 +253,7 @@ const removeMemberFromSpace = async (member) => {
                 <div class="card h-100 border border-secondary-subtle rounded-3 shadow-sm transition-all hover-shadow">
                     <div class="card-body p-4 d-flex flex-column">
                         <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="fw-bold mb-0 fs-16 text-truncate" style="max-width: 180px;">
+                            <h5 class="fw-bold mb-0 fs-16 text-truncate flex-grow-1 pe-2">
                                 <Link :href="`/spaces/${space.slug}`" class="text-body text-decoration-none hover-primary">
                                     {{ space.name }}
                                 </Link>

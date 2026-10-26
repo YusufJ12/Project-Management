@@ -333,15 +333,15 @@ const nextTime = () => {
 <template>
     <div class="gantt-container rounded-3 border border-secondary-subtle overflow-hidden shadow-sm">
         <!-- Top Toolbar Header -->
-        <div class="gantt-header d-flex flex-wrap align-items-center justify-content-between p-3 border-bottom">
+        <div class="gantt-header d-flex flex-wrap align-items-center justify-content-between p-2 p-sm-3 border-bottom gap-2">
             <!-- Left Controls: Title & Filters -->
-            <div class="d-flex align-items-center gap-3">
+            <div class="d-flex flex-wrap align-items-center gap-2">
                 <div class="d-flex align-items-center gap-2">
                     <i class="ri-grid-fill text-primary fs-18"></i>
                     <h5 class="fw-bold mb-0 text-body">Gantt Timeline</h5>
                 </div>
 
-                <div class="vr mx-1 opacity-25"></div>
+                <div class="vr mx-1 opacity-25 d-none d-sm-block"></div>
 
                 <!-- Stage Filter -->
                 <select v-model="selectedStageFilter" class="form-select form-select-sm gantt-select rounded-pill px-3 fs-12">
@@ -350,7 +350,7 @@ const nextTime = () => {
                 </select>
 
                 <!-- Search Input -->
-                <div class="position-relative" style="width: 180px;">
+                <div class="position-relative" style="width: 160px;">
                     <input
                         v-model="searchQuery"
                         type="text"
@@ -362,7 +362,7 @@ const nextTime = () => {
             </div>
 
             <!-- Right Controls: Auto Fit, Scale Dropdown, Navigation -->
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex flex-wrap align-items-center gap-2 ms-auto ms-sm-0">
                 <button
                     type="button"
                     class="btn btn-sm btn-outline-secondary rounded-pill px-3 fs-12 fw-semibold d-flex align-items-center gap-1"
@@ -372,7 +372,7 @@ const nextTime = () => {
                 </button>
 
                 <!-- Scale Mode -->
-                <select v-model="scale" class="form-select form-select-sm gantt-select rounded-pill px-3 fs-12 fw-semibold" style="width: 110px;">
+                <select v-model="scale" class="form-select form-select-sm gantt-select rounded-pill px-3 fs-12 fw-semibold" style="width: 105px;">
                     <option value="weeks">Weeks</option>
                     <option value="days">Days</option>
                     <option value="months">Months</option>
@@ -391,9 +391,9 @@ const nextTime = () => {
         </div>
 
         <!-- Main Gantt Body: Left Tasks Pane + Right Timeline Grid -->
-        <div class="gantt-body d-flex position-relative">
+        <div class="gantt-body d-flex position-relative overflow-x-auto" style="-webkit-overflow-scrolling: touch;">
             <!-- LEFT PANE: Task Titles & Dates -->
-            <div class="gantt-left-pane border-end flex-shrink-0">
+            <div class="gantt-left-pane border-end flex-shrink-0" style="width: min(340px, 45vw); min-width: 170px;">
                 <!-- Left Header -->
                 <div class="gantt-row gantt-table-header d-flex align-items-center justify-content-between px-3 border-bottom text-muted fs-12 fw-bold text-uppercase">
                     <span>Task Name</span>
@@ -539,7 +539,7 @@ const nextTime = () => {
         </div>
 
         <!-- Footer Info Tip -->
-        <div class="gantt-footer p-2 px-3 border-top bg-light-subtle d-flex align-items-center justify-content-between fs-11 text-muted">
+        <div class="gantt-footer p-2 px-3 border-top bg-light-subtle d-flex flex-wrap align-items-center justify-content-between gap-2 fs-11 text-muted">
             <div class="d-flex align-items-center gap-2">
                 <i class="ri-lightbulb-line text-warning"></i>
                 <span v-if="!readOnly">Geser timeline bar untuk memindahkan tanggal tugas, atau tarik sisi kiri/kanan untuk menyesuaikan durasi.</span>

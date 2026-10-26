@@ -349,3 +349,42 @@
     color: var(--pe-primary);
 }
 
+/* Responsive Optimizations for Small Screens (< 576px) */
+@media (max-width: 575.98px) {
+    .app-header .dark-mode-btn {
+        height: 36px;
+        width: 36px;
+        padding: 0;
+        border-radius: 50%;
+        justify-content: center;
+    }
+    .app-header .dark-mode-btn .header-btn {
+        height: 34px;
+        width: 34px;
+    }
+    .app-header .dark-mode-btn .header-btn:not(.active) {
+        display: none !important;
+    }
+    .app-header .dark-mode-btn .header-btn.active {
+        box-shadow: none !important;
+    }
+}
+
+/* Responsive Column Borders for Two-Column Modals */
+@media (min-width: 992px) {
+    .border-start-lg {
+        border-left: 1px solid var(--pe-border-color, #e2e8f0) !important;
+    }
+    .border-top-lg-0 {
+        border-top: 0 !important;
+    }
+}
+
+/* Fluid Momentum Scrolling for Responsive Horizontal Containers */
+.overflow-x-auto,
+.kanban-board-wrapper,
+.gantt-body {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+

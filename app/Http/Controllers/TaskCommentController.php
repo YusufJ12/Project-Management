@@ -6,6 +6,7 @@ use App\Events\TaskCommentAddedEvent;
 use App\Models\ActivityLog;
 use App\Models\Task;
 use App\Models\TaskComment;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -80,9 +81,34 @@ class TaskCommentController extends Controller
 
         $comment->load('user:id,name,email');
 
+        // Kirim in-app realtime notification ke penerima (assignees + creator)
+        $recipientIds = $task->assignees()->pluck('users.id')->all();
+        if ($task->creator_id) {
+            $recipientIds[] = (int) $task->creator_id;
+        }
+        if (empty($recipientIds)) {
+            $recipientIds = $space->members()->wherePivot('role', 'manager')->pluck('users.id')->all();
+        }
+
+        NotificationService::sendToMany(
+            array_unique($recipientIds),
+            $space->workspace_id,
+            'comment_added',
+            [
+                'title' => "Komentar Baru: {$task->title}",
+                'message' => "{$user->name}: " . mb_substr($comment->content, 0, 80),
+                'actor_name' => $user->name,
+                'actor_avatar' => $user->avatar_path ?? null,
+                'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}",
+                'task_id' => $task->id,
+                'space_slug' => $space->slug,
+            ],
+            $user->id
+        );
+
         DB::afterCommit(function () use ($space, $task, $comment) {
             try {
-                broadcast(new TaskCommentAddedEvent($space->id, $task->id, $comment));
+                broadcast(new TaskCommentAddedEvent($space->id, $task->id, $comment))->toOthers();
             } catch (\Throwable $e) {
                 report($e);
             }

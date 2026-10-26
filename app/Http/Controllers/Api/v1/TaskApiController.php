@@ -17,6 +17,7 @@ use App\Models\Task;
 use App\Models\TaskChecklist;
 use App\Models\TaskList;
 use App\Models\TaskStage;
+use App\Services\NotificationService;
 use App\Services\TaskNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -117,6 +118,22 @@ class TaskApiController extends Controller
 
         if (! empty($validated['assignee_ids'])) {
             $task->assignees()->sync($validated['assignee_ids']);
+
+            NotificationService::sendToMany(
+                $validated['assignee_ids'],
+                $space->workspace_id,
+                'task_assigned',
+                [
+                    'title' => 'Tugas Baru Ditugaskan',
+                    'message' => "{$user->name} menugaskan Anda pada: {$task->title}",
+                    'actor_name' => $user->name,
+                    'actor_avatar' => $user->avatar_path ?? null,
+                    'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}",
+                    'task_id' => $task->id,
+                    'space_slug' => $space->slug,
+                ],
+                $user->id
+            );
         }
 
         if (! empty($validated['dependency_ids'])) {
@@ -281,7 +298,27 @@ class TaskApiController extends Controller
         ]);
 
         if (isset($validated['assignee_ids'])) {
+            $oldAssigneeIds = $task->assignees()->pluck('users.id')->map(fn ($id) => (int) $id)->all();
             $task->assignees()->sync($validated['assignee_ids']);
+            $newlyAssignedIds = array_diff(array_map('intval', (array) $validated['assignee_ids']), $oldAssigneeIds);
+
+            if (! empty($newlyAssignedIds)) {
+                NotificationService::sendToMany(
+                    $newlyAssignedIds,
+                    $space->workspace_id,
+                    'task_assigned',
+                    [
+                        'title' => 'Tugas Baru Ditugaskan',
+                        'message' => "{$user->name} menugaskan Anda pada: {$task->title}",
+                        'actor_name' => $user->name,
+                        'actor_avatar' => $user->avatar_path ?? null,
+                        'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}",
+                        'task_id' => $task->id,
+                        'space_slug' => $space->slug,
+                    ],
+                    $user->id
+                );
+            }
         }
 
         if (isset($validated['dependency_ids'])) {
@@ -401,6 +438,29 @@ class TaskApiController extends Controller
                 ]);
             }
         });
+
+        // In-app realtime notification jika berpindah stage
+        if ($oldStageId !== $newStageId) {
+            $recipientIds = $task->assignees()->pluck('users.id')->all();
+            if ($task->creator_id) {
+                $recipientIds[] = (int) $task->creator_id;
+            }
+            NotificationService::sendToMany(
+                array_unique($recipientIds),
+                $space->workspace_id,
+                'task_moved',
+                [
+                    'title' => 'Status Tugas Diperbarui',
+                    'message' => "{$user->name} memindahkan \"{$task->title}\" ke {$targetStage->name}",
+                    'actor_name' => $user->name,
+                    'actor_avatar' => $user->avatar_path ?? null,
+                    'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}",
+                    'task_id' => $task->id,
+                    'space_slug' => $space->slug,
+                ],
+                $user->id
+            );
+        }
 
         // Email notification jika berpindah ke stage done
         if (! $wasDone && $isDone) {
@@ -577,9 +637,33 @@ class TaskApiController extends Controller
 
         $comment->load('user');
 
+        $recipientIds = $task->assignees()->pluck('users.id')->all();
+        if ($task->creator_id) {
+            $recipientIds[] = (int) $task->creator_id;
+        }
+        if (empty($recipientIds)) {
+            $recipientIds = $space->members()->wherePivot('role', 'manager')->pluck('users.id')->all();
+        }
+
+        NotificationService::sendToMany(
+            array_unique($recipientIds),
+            $space->workspace_id,
+            'comment_added',
+            [
+                'title' => "Komentar Baru: {$task->title}",
+                'message' => "{$user->name}: " . mb_substr($comment->content, 0, 80),
+                'actor_name' => $user->name,
+                'actor_avatar' => $user->avatar_path ?? null,
+                'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}",
+                'task_id' => $task->id,
+                'space_slug' => $space->slug,
+            ],
+            $user->id
+        );
+
         DB::afterCommit(function () use ($space, $task, $comment) {
             try {
-                broadcast(new TaskCommentAddedEvent($space->id, $task->id, $comment));
+                broadcast(new TaskCommentAddedEvent($space->id, $task->id, $comment))->toOthers();
             } catch (\Throwable $e) {
                 report($e);
             }
