@@ -1122,6 +1122,8 @@ const deleteComment = async (com) => {
 
 const quickEmojis = ['👍', '❤️', '🔥', '🚀', '😄', '🎉', '👀', '👏', '✅', '💯', '🙏'];
 const isGifDropdownOpen = ref(false);
+const gifSearchQuery = ref('');
+const selectedGifCategory = ref('all');
 
 const isMyComment = (com) => {
     if (!com) return false;
@@ -1136,15 +1138,31 @@ const addEmojiToComment = (emoji) => {
 };
 
 const popularGifs = [
-    { title: '👍 Mantap', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
-    { title: '🚀 Meluncur', url: 'https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif' },
-    { title: '🎉 Berhasil', url: 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif' },
-    { title: '💻 On Progress', url: 'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.gif' },
-    { title: '✅ Approved', url: 'https://media.giphy.com/media/13zeE9qQNC5IKk/giphy.gif' },
-    { title: '☕ Istirahat', url: 'https://media.giphy.com/media/oZEBLugoTNRxS/giphy.gif' },
-    { title: '🔥 Semangat', url: 'https://media.giphy.com/media/QMHoU66sBXCAHonSCg/giphy.gif' },
-    { title: '🙏 Makasih', url: 'https://media.giphy.com/media/xT8qB4foF1nxHZwpLa/giphy.gif' },
+    { title: '👍 Mantap / Good Job', category: 'reaksi', tags: 'mantap ok good job thumbs up jempol setuju jos sip', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
+    { title: '🚀 Siap Meluncur', category: 'semangat', tags: 'launch meluncur roket gas berangkat siap go', url: 'https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif' },
+    { title: '🎉 Berhasil / Yay', category: 'perayaan', tags: 'berhasil pesta yay celebrate hore victory menang done', url: 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif' },
+    { title: '💻 Sedang Dikerjakan', category: 'kerja', tags: 'coding progress ngetik kerja laptop fokus proses', url: 'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.gif' },
+    { title: '✅ Approved / ACC', category: 'reaksi', tags: 'approved acc centang setuju selesai clear oke sip', url: 'https://media.giphy.com/media/13zeE9qQNC5IKk/giphy.gif' },
+    { title: '☕ Istirahat / Ngopi', category: 'santai', tags: 'kopi ngopi santai istirahat break chill rileks', url: 'https://media.giphy.com/media/oZEBLugoTNRxS/giphy.gif' },
+    { title: '🔥 Semangat Membara', category: 'semangat', tags: 'semangat api fire gaspol on fire kerja keras', url: 'https://media.giphy.com/media/QMHoU66sBXCAHonSCg/giphy.gif' },
+    { title: '🙏 Terima Kasih', category: 'reaksi', tags: 'terima kasih makasih thanks sungkem nuhun thank you', url: 'https://media.giphy.com/media/xT8qB4foF1nxHZwpLa/giphy.gif' },
+    { title: '👏 Tepuk Tangan', category: 'perayaan', tags: 'applause tepuk tangan selamat keren mantul wow', url: 'https://media.giphy.com/media/nbvFVPiEiJH6JOGIok/giphy.gif' },
+    { title: '😂 Lucu / Wkwk', category: 'reaksi', tags: 'lucu ketawa tertawa ngakak lol wkwk haha kocak', url: 'https://media.giphy.com/media/10JhviFuU2gWD6/giphy.gif' },
+    { title: '👌 Sip / Siap Bos', category: 'reaksi', tags: 'oke sip siap bos deal beres aman', url: 'https://media.giphy.com/media/l41lFw057lAJQMwg0/giphy.gif' },
+    { title: '🤔 Berpikir / Mikir', category: 'kerja', tags: 'bingung mikir pusing loading search analisis ide', url: 'https://media.giphy.com/media/d3mlE7uhX8KFgEmY/giphy.gif' },
 ];
+
+const filteredGifs = computed(() => {
+    let list = popularGifs;
+    if (selectedGifCategory.value !== 'all') {
+        list = list.filter((g) => g.category === selectedGifCategory.value);
+    }
+    if (gifSearchQuery.value.trim()) {
+        const q = gifSearchQuery.value.toLowerCase().trim();
+        list = list.filter((g) => g.title.toLowerCase().includes(q) || g.tags.toLowerCase().includes(q));
+    }
+    return list;
+});
 
 const selectGif = (url) => {
     isGifDropdownOpen.value = false;
@@ -1164,6 +1182,22 @@ const isMediaUrl = (content) => {
         trimmed.includes('tenor.com') ||
         trimmed.includes('giphy.com') ||
         trimmed.includes('images.unsplash.com');
+};
+
+const extractMediaUrl = (content) => {
+    if (!content || typeof content !== 'string') return null;
+    const trimmed = content.trim();
+    if (isMediaUrl(trimmed)) return trimmed;
+    const match = trimmed.match(/(https?:\/\/[^\s]+(?:\.png|\.jpg|\.jpeg|\.gif|\.webp|giphy\.com[^\s]*|tenor\.com[^\s]*|images\.unsplash\.com[^\s]*))/i);
+    return match ? match[0] : null;
+};
+
+const extractTextWithoutMedia = (content) => {
+    if (!content || typeof content !== 'string') return '';
+    const media = extractMediaUrl(content);
+    if (!media) return content;
+    const remaining = content.replace(media, '').trim();
+    return remaining;
 };
 
 const formatChatTime = (rawDate) => {
@@ -3324,12 +3358,18 @@ const filteredTasks = computed(() => {
                                                     </div>
 
                                                     <!-- Media Preview (Image or GIF URL) -->
-                                                    <div v-if="isMediaUrl(com.content)" class="my-1">
-                                                        <img :src="com.content.trim()" class="img-fluid rounded-3 border" style="max-height: 200px; width: 100%; object-fit: cover;" alt="media preview" />
+                                                    <div v-if="extractMediaUrl(com.content)" class="my-1">
+                                                        <img
+                                                            :src="extractMediaUrl(com.content)"
+                                                            class="img-fluid rounded-3 border bg-light"
+                                                            style="max-height: 220px; max-width: 100%; object-fit: contain;"
+                                                            loading="lazy"
+                                                            alt="media preview"
+                                                        />
                                                     </div>
-                                                    <!-- Text Message -->
-                                                    <p v-else class="fs-13 text-body mb-1 lh-base text-break">
-                                                        {{ com.content }}
+                                                    <!-- Text Message (shows full text or caption if image is attached) -->
+                                                    <p v-if="extractTextWithoutMedia(com.content)" class="fs-13 text-body mb-1 lh-base text-break">
+                                                        {{ extractTextWithoutMedia(com.content) }}
                                                     </p>
 
                                                     <!-- Timestamp & Read Status -->
@@ -3348,49 +3388,140 @@ const filteredTasks = computed(() => {
 
                                     <!-- Quick Emoji & GIF Bar -->
                                     <div class="card border rounded-4 p-3 bg-light-subtle shadow-2xs mb-4">
-                                        <div class="d-flex align-items-center gap-1 mb-2 overflow-x-auto pb-1">
-                                            <button
-                                                v-for="em in quickEmojis"
-                                                :key="em"
-                                                type="button"
-                                                class="btn btn-xs btn-light border py-1 px-2 rounded-2 fs-14 flex-shrink-0"
-                                                @click="addEmojiToComment(em)"
-                                            >
-                                                {{ em }}
-                                            </button>
-                                            <div class="position-relative ms-auto flex-shrink-0">
+                                        <div class="d-flex align-items-center gap-2 mb-2">
+                                            <!-- Quick Emojis scrollable row -->
+                                            <div class="d-flex align-items-center gap-1 overflow-x-auto pb-1 flex-grow-1">
                                                 <button
-                                                    class="btn btn-xs btn-outline-primary rounded-pill px-2 py-1 fs-11 fw-semibold"
+                                                    v-for="em in quickEmojis"
+                                                    :key="em"
                                                     type="button"
-                                                    @click="isGifDropdownOpen = !isGifDropdownOpen"
+                                                    class="btn btn-xs btn-light border py-1 px-2 rounded-2 fs-14 flex-shrink-0"
+                                                    @click="addEmojiToComment(em)"
                                                 >
-                                                    <i class="ri-file-gif-line me-1"></i> GIF Bebas Beban Server
+                                                    {{ em }}
                                                 </button>
-                                                <div
-                                                    v-if="isGifDropdownOpen"
-                                                    class="position-absolute end-0 bottom-100 mb-2 p-2 bg-white rounded-3 shadow-lg border"
-                                                    style="width: 280px; z-index: 1060;"
-                                                >
-                                                    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
-                                                        <span class="fs-11 text-uppercase fw-bold text-muted">Pilih GIF Cepat (CDN)</span>
-                                                        <button type="button" class="btn btn-sm btn-link text-muted p-0 border-0" @click="isGifDropdownOpen = false">
-                                                            <i class="ri-close-line fs-14"></i>
-                                                        </button>
+                                            </div>
+                                            <!-- GIF Toggle Button -->
+                                            <button
+                                                class="btn btn-xs rounded-pill px-3 py-1 fs-11 fw-semibold flex-shrink-0 ms-auto"
+                                                :class="isGifDropdownOpen ? 'btn-primary text-white' : 'btn-outline-primary'"
+                                                type="button"
+                                                @click="isGifDropdownOpen = !isGifDropdownOpen"
+                                            >
+                                                <i class="ri-file-gif-line me-1"></i>
+                                                {{ isGifDropdownOpen ? 'Tutup GIF' : 'GIF Bebas Beban Server' }}
+                                            </button>
+                                        </div>
+
+                                        <!-- Expandable Modern GIF & Sticker Drawer -->
+                                        <div v-if="isGifDropdownOpen" class="bg-white rounded-4 p-3 border mb-3 shadow-sm">
+                                            <div class="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="bg-primary-subtle text-primary p-1 rounded-2 d-flex align-items-center justify-content-center" style="width: 26px; height: 26px;">
+                                                        <i class="ri-file-gif-fill fs-16"></i>
                                                     </div>
-                                                    <div class="row g-1" style="max-height: 220px; overflow-y: auto;">
-                                                        <div v-for="g in popularGifs" :key="g.url" class="col-6">
-                                                            <div
-                                                                class="ratio ratio-16x9 rounded overflow-hidden border cursor-pointer hover-shadow"
-                                                                style="cursor: pointer;"
-                                                                @click="selectGif(g.url)"
-                                                                :title="g.title"
-                                                            >
-                                                                <img :src="g.url" class="object-fit-cover w-100 h-100" />
-                                                            </div>
-                                                            <span class="fs-10 text-truncate d-block mt-1 text-center text-muted">{{ g.title }}</span>
+                                                    <div>
+                                                        <h6 class="mb-0 fs-12 fw-bold text-dark">Pilih GIF Animasi (CDN)</h6>
+                                                        <span class="fs-10 text-muted">Koleksi animasi ringan langsung dari CDN, 0 KB beban server</span>
+                                                    </div>
+                                                </div>
+                                                <button type="button" class="btn btn-sm btn-light border rounded-circle p-1" style="width: 26px; height: 26px;" @click="isGifDropdownOpen = false">
+                                                    <i class="ri-close-line fs-14 text-muted"></i>
+                                                </button>
+                                            </div>
+
+                                            <!-- Search & Category Filters -->
+                                            <div class="row g-2 mb-3">
+                                                <div class="col-12 col-md-5">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text bg-light border-end-0"><i class="ri-search-line fs-11 text-muted"></i></span>
+                                                        <input
+                                                            v-model="gifSearchQuery"
+                                                            type="text"
+                                                            class="form-control form-control-sm border-start-0 fs-12"
+                                                            placeholder="Cari GIF (cth: mantap, kerja, kopi...)"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div class="col-12 col-md-7 d-flex gap-1 overflow-x-auto pb-1">
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-xs rounded-pill px-2 py-1 fs-11 flex-shrink-0"
+                                                        :class="selectedGifCategory === 'all' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                        @click="selectedGifCategory = 'all'"
+                                                    >
+                                                        Semua
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-xs rounded-pill px-2 py-1 fs-11 flex-shrink-0"
+                                                        :class="selectedGifCategory === 'kerja' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                        @click="selectedGifCategory = 'kerja'"
+                                                    >
+                                                        💼 Kerja
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-xs rounded-pill px-2 py-1 fs-11 flex-shrink-0"
+                                                        :class="selectedGifCategory === 'reaksi' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                        @click="selectedGifCategory = 'reaksi'"
+                                                    >
+                                                        👍 Reaksi
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-xs rounded-pill px-2 py-1 fs-11 flex-shrink-0"
+                                                        :class="selectedGifCategory === 'semangat' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                        @click="selectedGifCategory = 'semangat'"
+                                                    >
+                                                        🔥 Semangat
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-xs rounded-pill px-2 py-1 fs-11 flex-shrink-0"
+                                                        :class="selectedGifCategory === 'perayaan' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                        @click="selectedGifCategory = 'perayaan'"
+                                                    >
+                                                        🎉 Perayaan
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-xs rounded-pill px-2 py-1 fs-11 flex-shrink-0"
+                                                        :class="selectedGifCategory === 'santai' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                        @click="selectedGifCategory = 'santai'"
+                                                    >
+                                                        ☕ Santai
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <!-- GIF Grid -->
+                                            <div class="row g-2 overflow-y-auto px-1" style="max-height: 250px;">
+                                                <div v-for="g in filteredGifs" :key="g.url" class="col-6 col-sm-4 col-md-3">
+                                                    <div
+                                                        class="position-relative rounded-3 overflow-hidden border shadow-2xs hover-shadow bg-light transition-all"
+                                                        style="cursor: pointer; height: 110px;"
+                                                        :title="g.title"
+                                                        @click="selectGif(g.url)"
+                                                    >
+                                                        <img :src="g.url" class="w-100 h-100 object-fit-cover" loading="lazy" :alt="g.title" />
+                                                        <div class="position-absolute bottom-0 start-0 end-0 p-1 text-white text-center fs-10 fw-semibold text-truncate" style="background: linear-gradient(transparent, rgba(0,0,0,0.75));">
+                                                            {{ g.title }}
                                                         </div>
                                                     </div>
                                                 </div>
+                                                <div v-if="!filteredGifs.length" class="col-12 py-4 text-center text-muted fs-12">
+                                                    <i class="ri-search-eye-line fs-24 d-block mb-1 opacity-50"></i>
+                                                    Tidak ditemukan GIF dengan kata kunci "{{ gifSearchQuery }}".
+                                                </div>
+                                            </div>
+                                            <div class="mt-2 pt-2 border-top d-flex justify-content-between align-items-center">
+                                                <span class="fs-10 text-muted">
+                                                    <i class="ri-checkbox-circle-fill text-success me-1"></i> Klik GIF untuk langsung mengirimkan ke obrolan task
+                                                </span>
+                                                <button type="button" class="btn btn-xs btn-link text-muted p-0 text-decoration-none" @click="isGifDropdownOpen = false">
+                                                    Sembunyikan Panel
+                                                </button>
                                             </div>
                                         </div>
 
