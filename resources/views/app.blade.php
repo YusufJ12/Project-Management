@@ -8,6 +8,16 @@
 
     <title inertia>{{ config('app.name', 'NexSphere Project Management') }}</title>
 
+    <!-- Reverb runtime config injected from server .env -->
+    <script>
+        window.__reverb = {
+            key: @json(config('broadcasting.connections.reverb.key')),
+            host: @json(config('broadcasting.connections.reverb.options.host')),
+            port: @json(config('broadcasting.connections.reverb.options.port')),
+            scheme: @json(config('broadcasting.connections.reverb.options.scheme'))
+        };
+    </script>
+
     <!-- Theme Initialization Script to prevent flash -->
     <script>
         (function() {
