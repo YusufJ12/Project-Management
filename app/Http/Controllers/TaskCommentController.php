@@ -99,7 +99,7 @@ class TaskCommentController extends Controller
                 'message' => "{$user->name}: " . mb_substr($comment->content, 0, 80),
                 'actor_name' => $user->name,
                 'actor_avatar' => $user->avatar_path ?? null,
-                'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}",
+                'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}&tab=comments",
                 'task_id' => $task->id,
                 'space_slug' => $space->slug,
             ],

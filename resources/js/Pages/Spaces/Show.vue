@@ -493,12 +493,82 @@ const openTaskModal = async (task) => {
     }
 };
 
+// Open Task by ID (e.g. from Notification deep-link)
+const openTaskById = async (taskId, preferredTab = null) => {
+    if (!taskId) return;
+    const taskIdNum = parseInt(taskId);
+
+    // Look for task in localSpace
+    let foundTask = null;
+    for (const list of localSpace.value?.lists || []) {
+        for (const stage of list.stages || []) {
+            const t = (stage.tasks || []).find((tk) => tk.id === taskIdNum);
+            if (t) {
+                foundTask = t;
+                break;
+            }
+        }
+        if (foundTask) break;
+    }
+
+    if (foundTask) {
+        await openTaskModal(foundTask);
+        if (preferredTab) {
+            taskModalTab.value = preferredTab;
+        }
+    } else {
+        // Fallback: fetch directly from server if not found in current space lists
+        try {
+            isLoadingTaskDetails.value = true;
+            isTaskModalOpen.value = true;
+            const res = await fetch(`/tasks/${taskIdNum}`, {
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.task) {
+                    await openTaskModal(data.task);
+                    if (preferredTab) {
+                        taskModalTab.value = preferredTab;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error opening task by ID', e);
+        } finally {
+            isLoadingTaskDetails.value = false;
+        }
+    }
+};
+
+const checkUrlTaskId = () => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const taskId = params.get('task_id');
+    const tab = params.get('tab') || 'comments';
+    if (taskId) {
+        openTaskById(taskId, tab);
+    }
+};
+
 const closeTaskModal = () => {
     isTaskModalOpen.value = false;
     selectedTask.value = null;
     taskDependencyIds.value = [];
     selectedPrerequisiteTaskId.value = '';
     modalCleanSnapshot.value = null;
+
+    if (typeof window !== 'undefined' && window.location.search) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('task_id')) {
+            url.searchParams.delete('task_id');
+            url.searchParams.delete('tab');
+            window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+        }
+    }
 };
 
 // Sync updated task into localSpace across lists & stages
@@ -1594,9 +1664,19 @@ const initSortable = () => {
 onMounted(() => {
     nextTick(() => {
         initSortable();
+        checkUrlTaskId();
     });
     initEcho();
 });
+
+watch(
+    () => page.url,
+    () => {
+        nextTick(() => {
+            checkUrlTaskId();
+        });
+    }
+);
 
 onUnmounted(() => {
     cleanupEcho();

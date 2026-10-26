@@ -130,24 +130,82 @@ const removeFloatingToast = (id) => {
     floatingToasts.value = floatingToasts.value.filter((t) => t.id !== id);
 };
 
-const clickToast = (toast) => {
-    removeFloatingToast(toast.id);
-    if (toast.url) {
-        router.visit(toast.url);
-    }
-};
-
 const markNotificationRead = (notif) => {
+    if (!notif) return;
+
     if (!notif.read_at) {
         notif.read_at = new Date().toISOString();
         if (localUnreadCount.value > 0) localUnreadCount.value--;
     }
-    router.post(`/notifications/${notif.id}/read`, {}, {
-        preserveScroll: true,
-        only: ['notifications'],
-    });
-    if (notif.data?.url) {
-        router.visit(notif.data.url);
+
+    // Persist via fetch with CSRF so it is not cancelled by router navigation
+    const csrfToken = page.props.csrf_token || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    try {
+        fetch(`/notifications/${notif.id}/read`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                Accept: 'application/json',
+            },
+        });
+    } catch (e) {
+        console.error('Failed to mark notification read', e);
+    }
+
+    const targetUrl = notif.data?.url;
+    if (targetUrl) {
+        try {
+            const urlObj = new URL(targetUrl, window.location.origin);
+            const pathWithQuery = urlObj.pathname + urlObj.search + urlObj.hash;
+            router.visit(pathWithQuery, {
+                preserveScroll: true,
+            });
+        } catch {
+            router.visit(targetUrl, {
+                preserveScroll: true,
+            });
+        }
+    }
+};
+
+const clickToast = (toast) => {
+    removeFloatingToast(toast.id);
+
+    // If matching unread notification in localNotifications, mark it as read
+    const matchingNotif = localNotifications.value.find((n) => String(n.id) === String(toast.id));
+    if (matchingNotif) {
+        markNotificationRead(matchingNotif);
+        return;
+    }
+
+    // Otherwise mark read via fetch if numeric ID
+    if (toast.id && !isNaN(Number(toast.id))) {
+        const csrfToken = page.props.csrf_token || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        try {
+            fetch(`/notifications/${toast.id}/read`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+            });
+        } catch (e) {}
+    }
+
+    if (toast.url) {
+        try {
+            const urlObj = new URL(toast.url, window.location.origin);
+            const pathWithQuery = urlObj.pathname + urlObj.search + urlObj.hash;
+            router.visit(pathWithQuery, {
+                preserveScroll: true,
+            });
+        } catch {
+            router.visit(toast.url, {
+                preserveScroll: true,
+            });
+        }
     }
 };
 
@@ -156,10 +214,20 @@ const markAllNotificationsRead = () => {
         n.read_at = new Date().toISOString();
     });
     localUnreadCount.value = 0;
-    router.post('/notifications/read-all', {}, {
-        preserveScroll: true,
-        only: ['notifications'],
-    });
+
+    const csrfToken = page.props.csrf_token || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    try {
+        fetch('/notifications/read-all', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                Accept: 'application/json',
+            },
+        });
+    } catch (e) {
+        console.error('Failed to mark all as read', e);
+    }
 };
 
 // Realtime User Notification Echo Subscription
