@@ -352,6 +352,199 @@ class _TaskDetailModalState extends State<TaskDetailModal>
     } catch (_) {}
   }
 
+  String _formatChatTime(String rawDate) {
+    if (rawDate.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(rawDate).toLocal();
+      final hour = dt.hour.toString().padLeft(2, '0');
+      final minute = dt.minute.toString().padLeft(2, '0');
+      return '$hour:$minute';
+    } catch (_) {
+      if (rawDate.contains(' ')) {
+        final parts = rawDate.split(' ');
+        if (parts.length > 1 && parts[1].contains(':')) {
+          final timeParts = parts[1].split(':');
+          return '${timeParts[0]}:${timeParts[1]}';
+        }
+      }
+      return rawDate;
+    }
+  }
+
+  Color _getUserAvatarColor(String name) {
+    final colors = [
+      const Color(0xFF00AAAD),
+      const Color(0xFF0284C7),
+      const Color(0xFF8B5CF6),
+      const Color(0xFFEC4899),
+      const Color(0xFFF59E0B),
+      const Color(0xFF10B981),
+      const Color(0xFF6366F1),
+    ];
+    if (name.isEmpty) return colors[0];
+    final code = name.codeUnits.fold(0, (prev, elem) => prev + elem);
+    return colors[code % colors.length];
+  }
+
+  bool _isMediaUrl(String content) {
+    final trimmed = content.trim();
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false;
+    final lower = trimmed.toLowerCase();
+    return lower.contains('.png') ||
+        lower.contains('.jpg') ||
+        lower.contains('.jpeg') ||
+        lower.contains('.gif') ||
+        lower.contains('.webp') ||
+        lower.contains('tenor.com') ||
+        lower.contains('giphy.com') ||
+        lower.contains('images.unsplash.com');
+  }
+
+  void _showGifPicker() {
+    final List<Map<String, String>> popularGifs = [
+      {
+        'title': '👍 Good Job / Mantap',
+        'url': 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif',
+      },
+      {
+        'title': '🚀 Launch / Siap Meluncur',
+        'url': 'https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif',
+      },
+      {
+        'title': '🎉 Celebration / Berhasil',
+        'url': 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif',
+      },
+      {
+        'title': '💻 Coding / Sedang Dikerjakan',
+        'url': 'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.gif',
+      },
+      {
+        'title': '✅ Approved / Disetujui',
+        'url': 'https://media.giphy.com/media/13zeE9qQNC5IKk/giphy.gif',
+      },
+      {
+        'title': '☕ Coffee Break / Istirahat',
+        'url': 'https://media.giphy.com/media/oZEBLugoTNRxS/giphy.gif',
+      },
+      {
+        'title': '🔥 Semangat / On Fire',
+        'url': 'https://media.giphy.com/media/QMHoU66sBXCAHonSCg/giphy.gif',
+      },
+      {
+        'title': '🙏 Terima Kasih / Thanks',
+        'url': 'https://media.giphy.com/media/xT8qB4foF1nxHZwpLa/giphy.gif',
+      },
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: 420,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withAlpha(80),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.gif_box_rounded, color: Color(0xFF00AAAD), size: 24),
+                  const SizedBox(width: 8),
+                  const Text('Pilih GIF (Bebas Beban Server)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.all(12),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 1.4,
+                ),
+                itemCount: popularGifs.length,
+                itemBuilder: (ctx, idx) {
+                  final gif = popularGifs[idx];
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _commentCtrl.text = gif['url']!;
+                      _sendComment();
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            gif['url']!,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (c, child, progress) {
+                              if (progress == null) return child;
+                              return const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)));
+                            },
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.grey.shade200,
+                              child: const Icon(Icons.broken_image_outlined),
+                            ),
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withAlpha(160),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 6,
+                            left: 8,
+                            right: 8,
+                            child: Text(
+                              gif['title']!,
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // --- ATTACHMENTS ACTIONS ---
   Future<void> _deleteAttachment(int attachmentId) async {
     try {
@@ -1247,14 +1440,15 @@ class _TaskDetailModalState extends State<TaskDetailModal>
   }
 
   // ==========================================
-  // TAB 2: DISKUSI & KOMENTAR
+  // TAB 2: DISKUSI & KOMENTAR (WHATSAPP STYLE)
   // ==========================================
   Widget _buildDiscussionAndCommentsTab() {
     final comments = _task?.comments ?? [];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Column(
       children: [
-        // Comments List
+        // WhatsApp Chat Stream
         Expanded(
           child: comments.isEmpty
               ? Center(
@@ -1270,101 +1464,325 @@ class _TaskDetailModalState extends State<TaskDetailModal>
                       ),
                       const SizedBox(height: 4),
                       const Text(
-                        'Mulai diskusi dengan tim terkait tugas ini.',
+                        'Kirim pesan untuk berdiskusi dengan tim di task ini.',
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  reverse: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   itemCount: comments.length,
                   itemBuilder: (ctx, idx) {
-                    final c = comments[idx];
+                    // Chronological order from top (older) to bottom (newest)
+                    final c = comments[comments.length - 1 - idx];
                     final isMyComment = widget.currentUser != null &&
                         c.userId == widget.currentUser!.id;
+                    final isMedia = _isMediaUrl(c.content);
+                    final timeStr = _formatChatTime(c.createdAt);
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.withAlpha(35)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 14,
-                                backgroundColor: const Color(0xFF00AAAD).withAlpha(30),
-                                child: Text(
-                                  c.userName.isNotEmpty
-                                      ? c.userName[0].toUpperCase()
-                                      : '?',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF00AAAD),
+                    if (isMyComment) {
+                      // Outgoing WhatsApp Bubble (Kanan)
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Flexible(
+                              child: Container(
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.78,
+                                ),
+                                margin: const EdgeInsets.only(left: 48),
+                                padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? const Color(0xFF0F5156)
+                                      : const Color(0xFFDCF8C6), // Khas WhatsApp Green Bubble
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(16),
+                                    topRight: Radius.circular(16),
+                                    bottomLeft: Radius.circular(16),
+                                    bottomRight: Radius.circular(3),
                                   ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withAlpha(isDark ? 30 : 12),
+                                      blurRadius: 2,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      c.userName,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11.5,
+                                        color: isDark ? const Color(0xFF4FD1C5) : const Color(0xFF00AAAD),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    if (isMedia)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 6),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: Image.network(
+                                            c.content.trim(),
+                                            fit: BoxFit.cover,
+                                            loadingBuilder: (_, child, progress) {
+                                              if (progress == null) return child;
+                                              return Container(
+                                                height: 140,
+                                                alignment: Alignment.center,
+                                                child: const SizedBox(
+                                                  width: 24,
+                                                  height: 24,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                ),
+                                              );
+                                            },
+                                            errorBuilder: (_, __, ___) => Container(
+                                              height: 70,
+                                              color: Colors.black12,
+                                              alignment: Alignment.center,
+                                              child: const Text('Gagal memuat media', style: TextStyle(fontSize: 11)),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    else
+                                      Text(
+                                        c.content,
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          height: 1.35,
+                                          color: isDark ? Colors.white : const Color(0xFF111B21),
+                                        ),
+                                      ),
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        if (timeStr.isNotEmpty)
+                                          Text(
+                                            timeStr,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: isDark ? Colors.white70 : Colors.black45,
+                                            ),
+                                          ),
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          Icons.done_all_rounded,
+                                          size: 14,
+                                          color: isDark ? const Color(0xFF4FD1C5) : const Color(0xFF34B7F1),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        InkWell(
+                                          onTap: () => _deleteComment(c.id),
+                                          child: Icon(
+                                            Icons.delete_outline_rounded,
+                                            size: 13,
+                                            color: isDark ? Colors.white54 : Colors.black38,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
+                            ),
+                          ],
+                        ),
+                      );
+                    } else {
+                      // Incoming WhatsApp Bubble (Kiri)
+                      final avatarColor = _getUserAvatarColor(c.userName);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 14,
+                              backgroundColor: avatarColor,
+                              child: Text(
+                                c.userName.isNotEmpty ? c.userName[0].toUpperCase() : '?',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Container(
+                                constraints: BoxConstraints(
+                                  maxWidth: MediaQuery.of(context).size.width * 0.76,
+                                ),
+                                margin: const EdgeInsets.only(right: 32),
+                                padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(16),
+                                    topRight: Radius.circular(16),
+                                    bottomRight: Radius.circular(16),
+                                    bottomLeft: Radius.circular(3),
+                                  ),
+                                  border: isDark ? null : Border.all(color: Colors.grey.withAlpha(40)),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withAlpha(isDark ? 25 : 10),
+                                      blurRadius: 2,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       c.userName,
-                                      style: const TextStyle(
-                                        fontSize: 12,
+                                      style: TextStyle(
                                         fontWeight: FontWeight.bold,
+                                        fontSize: 11.5,
+                                        color: avatarColor,
                                       ),
                                     ),
-                                    if (c.createdAt.isNotEmpty)
+                                    const SizedBox(height: 3),
+                                    if (isMedia)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: Image.network(
+                                            c.content.trim(),
+                                            fit: BoxFit.cover,
+                                            loadingBuilder: (_, child, progress) {
+                                              if (progress == null) return child;
+                                              return Container(
+                                                height: 140,
+                                                alignment: Alignment.center,
+                                                child: const SizedBox(
+                                                  width: 24,
+                                                  height: 24,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                ),
+                                              );
+                                            },
+                                            errorBuilder: (_, __, ___) => Container(
+                                              height: 70,
+                                              color: Colors.black12,
+                                              alignment: Alignment.center,
+                                              child: const Text('Gagal memuat media', style: TextStyle(fontSize: 11)),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    else
                                       Text(
-                                        c.createdAt,
-                                        style: const TextStyle(
-                                            fontSize: 10, color: Colors.grey),
+                                        c.content,
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          height: 1.35,
+                                          color: isDark ? Colors.white : const Color(0xFF111B21),
+                                        ),
                                       ),
+                                    const SizedBox(height: 3),
+                                    Align(
+                                      alignment: Alignment.bottomRight,
+                                      child: Text(
+                                        timeStr,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: isDark ? Colors.white60 : Colors.black45,
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
-                              if (isMyComment)
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline_rounded,
-                                      size: 16, color: Colors.grey),
-                                  tooltip: 'Hapus komentar',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: () => _deleteComment(c.id),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            c.content,
-                            style: const TextStyle(fontSize: 13, height: 1.4),
-                          ),
-                        ],
-                      ),
-                    );
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                   },
                 ),
         ),
 
-        // Bottom Input Field
+        // Quick Emoji Reaction Bar (Scrollable)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            border: Border(top: BorderSide(color: Colors.grey.withAlpha(25))),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ...['👍', '❤️', '🔥', '🚀', '😄', '🎉', '👀', '👏', '✅', '💯', '🙏'].map(
+                  (emoji) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        _commentCtrl.text = '${_commentCtrl.text} $emoji'.trim();
+                        _commentCtrl.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _commentCtrl.text.length),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.withAlpha(30)),
+                        ),
+                        child: Text(emoji, style: const TextStyle(fontSize: 15)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // WhatsApp Style Chat Input Field Bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             border: Border(top: BorderSide(color: Colors.grey.withAlpha(35))),
           ),
           child: Row(
             children: [
+              IconButton(
+                icon: const Icon(Icons.gif_box_rounded, color: Color(0xFF00AAAD), size: 22),
+                tooltip: 'Pilih GIF (Bebas Beban Server)',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: _showGifPicker,
+              ),
+              IconButton(
+                icon: const Icon(Icons.attach_file_rounded, color: Colors.grey, size: 20),
+                tooltip: 'Unggah Berkas',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: _showUploadDialog,
+              ),
+              const SizedBox(width: 4),
               Expanded(
                 child: TextField(
                   controller: _commentCtrl,
@@ -1373,7 +1791,7 @@ class _TaskDetailModalState extends State<TaskDetailModal>
                     hintStyle: const TextStyle(fontSize: 13),
                     isDense: true,
                     contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                     filled: true,
                     fillColor: Theme.of(context).scaffoldBackgroundColor,
                     border: OutlineInputBorder(
@@ -1384,7 +1802,7 @@ class _TaskDetailModalState extends State<TaskDetailModal>
                   onSubmitted: (_) => _sendComment(),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               IconButton(
                 style: IconButton.styleFrom(
                   backgroundColor: const Color(0xFF00AAAD),
@@ -1398,7 +1816,7 @@ class _TaskDetailModalState extends State<TaskDetailModal>
                             strokeWidth: 2, color: Colors.white),
                       )
                     : const Icon(Icons.send_rounded, size: 18),
-                tooltip: 'Kirim Komentar',
+                tooltip: 'Kirim',
                 onPressed: _isSendingComment ? null : _sendComment,
               ),
             ],

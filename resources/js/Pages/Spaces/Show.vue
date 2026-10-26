@@ -1120,6 +1120,52 @@ const deleteComment = async (com) => {
     }
 };
 
+const quickEmojis = ['👍', '❤️', '🔥', '🚀', '😄', '🎉', '👀', '👏', '✅', '💯', '🙏'];
+
+const addEmojiToComment = (emoji) => {
+    newCommentContent.value = (newCommentContent.value ? newCommentContent.value + ' ' : '') + emoji;
+};
+
+const popularGifs = [
+    { title: '👍 Mantap', url: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
+    { title: '🚀 Meluncur', url: 'https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif' },
+    { title: '🎉 Berhasil', url: 'https://media.giphy.com/media/artj92V8o75VPL7AeQ/giphy.gif' },
+    { title: '💻 On Progress', url: 'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.gif' },
+    { title: '✅ Approved', url: 'https://media.giphy.com/media/13zeE9qQNC5IKk/giphy.gif' },
+    { title: '☕ Istirahat', url: 'https://media.giphy.com/media/oZEBLugoTNRxS/giphy.gif' },
+    { title: '🔥 Semangat', url: 'https://media.giphy.com/media/QMHoU66sBXCAHonSCg/giphy.gif' },
+    { title: '🙏 Makasih', url: 'https://media.giphy.com/media/xT8qB4foF1nxHZwpLa/giphy.gif' },
+];
+
+const selectGif = (url) => {
+    newCommentContent.value = url;
+    addComment();
+};
+
+const isMediaUrl = (content) => {
+    if (!content || typeof content !== 'string') return false;
+    const trimmed = content.trim().toLowerCase();
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false;
+    return trimmed.includes('.png') ||
+        trimmed.includes('.jpg') ||
+        trimmed.includes('.jpeg') ||
+        trimmed.includes('.gif') ||
+        trimmed.includes('.webp') ||
+        trimmed.includes('tenor.com') ||
+        trimmed.includes('giphy.com') ||
+        trimmed.includes('images.unsplash.com');
+};
+
+const formatChatTime = (rawDate) => {
+    if (!rawDate) return '';
+    try {
+        const dt = new Date(rawDate);
+        return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+        return rawDate;
+    }
+};
+
 // ==========================================
 // REAL-TIME WEBSOCKET PUSH (LARAVEL ECHO & REVERB)
 // ==========================================
@@ -3214,64 +3260,133 @@ const filteredTasks = computed(() => {
                                     </div>
                                 </div>
 
-                                <!-- TAB CONTENT: COMMENTS & AUDIT TRAIL -->
+                                <!-- TAB CONTENT: COMMENTS & AUDIT TRAIL (WHATSAPP STYLE) -->
                                 <div v-else-if="taskModalTab === 'comments'">
-                                    <!-- Add Comment Form -->
-                                    <div class="card border rounded-3 p-3 mb-4 bg-light-subtle">
-                                        <label class="form-label fs-13 fw-bold mb-2">Tulis Komentar Diskusi</label>
-                                        <textarea
-                                            v-model="newCommentContent"
-                                            class="form-control fs-13 mb-2"
-                                            rows="3"
-                                            placeholder="Tulis pesan atau update progres..."
-                                            :disabled="isSubmittingComment"
-                                        ></textarea>
-                                        <div class="d-flex justify-content-end">
-                                            <button
-                                                type="button"
-                                                class="btn btn-sm btn-primary rounded-pill px-4 fw-semibold fs-13"
-                                                :disabled="!newCommentContent.trim() || isSubmittingComment"
-                                                @click="addComment"
+                                    <!-- WhatsApp Chat Stream Container -->
+                                    <div class="mb-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <h6 class="fw-bold fs-14 mb-0 d-flex align-items-center gap-2">
+                                                <i class="ri-whatsapp-line text-success fs-16"></i> Diskusi Task ({{ selectedTask?.comments?.length || 0 }})
+                                            </h6>
+                                            <span class="badge bg-light text-muted border fs-11">
+                                                <i class="ri-shield-check-line text-primary me-1"></i>Realtime & Push
+                                            </span>
+                                        </div>
+
+                                        <div v-if="selectedTask?.comments?.length" class="p-3 rounded-4 border bg-light-subtle d-flex flex-column gap-2" style="max-height: 480px; overflow-y: auto;">
+                                            <div
+                                                v-for="com in [...selectedTask.comments].reverse()"
+                                                :key="com.id"
+                                                class="d-flex w-100"
+                                                :class="com.user_id === currentUser?.id ? 'justify-content-end' : 'justify-content-start'"
                                             >
-                                                <i class="ri-send-plane-fill me-1"></i> Kirim Komentar
-                                            </button>
+                                                <!-- Incoming User Avatar -->
+                                                <div v-if="com.user_id !== currentUser?.id" class="me-2 flex-shrink-0 mt-1">
+                                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold fs-11 shadow-2xs" style="width: 28px; height: 28px;">
+                                                        {{ com.user?.name?.charAt(0).toUpperCase() || 'U' }}
+                                                    </div>
+                                                </div>
+
+                                                <!-- Chat Bubble -->
+                                                <div
+                                                    class="px-3 py-2 position-relative shadow-2xs"
+                                                    :style="{
+                                                        maxWidth: '78%',
+                                                        borderRadius: com.user_id === currentUser?.id ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                                                        backgroundColor: com.user_id === currentUser?.id ? 'rgba(0, 170, 173, 0.14)' : 'var(--bs-card-bg, #ffffff)',
+                                                        border: com.user_id === currentUser?.id ? '1px solid rgba(0, 170, 173, 0.3)' : '1px solid rgba(0, 0, 0, 0.08)'
+                                                    }"
+                                                >
+                                                    <!-- Sender Name & Delete Button -->
+                                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                                        <span class="fw-bold fs-11" :class="com.user_id === currentUser?.id ? 'text-primary' : 'text-body-secondary'">
+                                                            {{ com.user_id === currentUser?.id ? 'Anda' : (com.user?.name || 'Rekan Tim') }}
+                                                        </span>
+                                                        <button
+                                                            v-if="com.user_id === currentUser?.id || currentUser?.is_super_admin"
+                                                            type="button"
+                                                            class="btn btn-sm btn-link text-danger p-0 border-0 ms-2 opacity-75 hover-opacity-100"
+                                                            title="Hapus komentar"
+                                                            @click="deleteComment(com)"
+                                                        >
+                                                            <i class="ri-delete-bin-line fs-12"></i>
+                                                        </button>
+                                                    </div>
+
+                                                    <!-- Media Preview (Image or GIF URL) -->
+                                                    <div v-if="isMediaUrl(com.content)" class="my-1">
+                                                        <img :src="com.content.trim()" class="img-fluid rounded-3 border" style="max-height: 200px; width: 100%; object-fit: cover;" alt="media preview" />
+                                                    </div>
+                                                    <!-- Text Message -->
+                                                    <p v-else class="fs-13 text-body mb-1 lh-base text-break">
+                                                        {{ com.content }}
+                                                    </p>
+
+                                                    <!-- Timestamp & Read Status -->
+                                                    <div class="d-flex align-items-center justify-content-end gap-1 mt-1">
+                                                        <span class="fs-10 text-muted">{{ formatChatTime(com.created_at) }}</span>
+                                                        <i v-if="com.user_id === currentUser?.id" class="ri-check-double-line text-primary fs-12 ms-1"></i>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div v-else class="text-muted fs-12 border border-dashed rounded-4 p-4 text-center bg-body">
+                                            <i class="ri-chat-smile-3-line fs-32 text-primary d-block mb-2 opacity-50"></i>
+                                            Belum ada diskusi untuk task ini. Mulai obrolan dengan tim Anda!
                                         </div>
                                     </div>
 
-                                    <!-- Comments Stream -->
-                                    <div class="mb-4">
-                                        <h6 class="fw-bold fs-14 mb-3">Diskusi Tim ({{ selectedTask?.comments?.length || 0 }})</h6>
-                                        <div v-if="selectedTask?.comments?.length" class="d-flex flex-column gap-3">
-                                            <div
-                                                v-for="com in selectedTask.comments"
-                                                :key="com.id"
-                                                class="border rounded-3 p-3 bg-body shadow-2xs"
+                                    <!-- Quick Emoji & GIF Bar -->
+                                    <div class="card border rounded-4 p-3 bg-light-subtle shadow-2xs mb-4">
+                                        <div class="d-flex align-items-center gap-1 mb-2 overflow-x-auto pb-1">
+                                            <button
+                                                v-for="em in quickEmojis"
+                                                :key="em"
+                                                type="button"
+                                                class="btn btn-xs btn-light border py-1 px-2 rounded-2 fs-14 flex-shrink-0"
+                                                @click="addEmojiToComment(em)"
                                             >
-                                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                                    <div class="d-flex align-items-center gap-2">
-                                                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-semibold fs-11" style="width: 28px; height: 28px;">
-                                                            {{ com.user?.name?.charAt(0).toUpperCase() || 'U' }}
+                                                {{ em }}
+                                            </button>
+                                            <div class="dropdown ms-auto flex-shrink-0">
+                                                <button class="btn btn-xs btn-outline-primary dropdown-toggle rounded-pill px-2 py-1 fs-11 fw-semibold" type="button" data-bs-toggle="dropdown">
+                                                    <i class="ri-file-gif-line me-1"></i> GIF Bebas Beban Server
+                                                </button>
+                                                <div class="dropdown-menu dropdown-menu-end p-2 shadow" style="width: 270px;">
+                                                    <div class="dropdown-header fs-11 text-uppercase fw-bold p-1">Pilih GIF Cepat (CDN)</div>
+                                                    <div class="row g-1">
+                                                        <div v-for="g in popularGifs" :key="g.url" class="col-6">
+                                                            <div class="ratio ratio-16x9 rounded overflow-hidden border cursor-pointer hover-shadow" @click="selectGif(g.url)" :title="g.title">
+                                                                <img :src="g.url" class="object-fit-cover w-100 h-100" />
+                                                            </div>
+                                                            <span class="fs-10 text-truncate d-block mt-1 text-center text-muted">{{ g.title }}</span>
                                                         </div>
-                                                        <span class="fw-bold fs-13 text-body">{{ com.user?.name || 'User' }}</span>
-                                                        <span class="fs-11 text-muted">{{ formatDateTime(com.created_at) }}</span>
                                                     </div>
-                                                    <button
-                                                        v-if="com.user_id === currentUser?.id || currentUser?.is_super_admin"
-                                                        type="button"
-                                                        class="btn btn-sm btn-link text-danger p-0 border-0"
-                                                        title="Hapus komentar"
-                                                        @click="deleteComment(com)"
-                                                    >
-                                                        <i class="ri-delete-bin-line fs-14"></i>
-                                                    </button>
                                                 </div>
-                                                <p class="fs-13 text-body mb-0 lh-base text-break">
-                                                    {{ com.content }}
-                                                </p>
                                             </div>
                                         </div>
-                                        <div v-else class="text-muted fs-12 border border-dashed rounded-3 p-3 text-center">
-                                            Belum ada diskusi untuk task ini.
+
+                                        <!-- Message Input Field -->
+                                        <div class="position-relative">
+                                            <textarea
+                                                v-model="newCommentContent"
+                                                class="form-control fs-13 rounded-3"
+                                                rows="2"
+                                                placeholder="Ketik pesan diskusi atau paste link gambar/GIF..."
+                                                :disabled="isSubmittingComment"
+                                                @keydown.enter.exact.prevent="addComment"
+                                            ></textarea>
+                                            <div class="d-flex justify-content-between align-items-center mt-2">
+                                                <span class="fs-11 text-muted">Tekan <kbd>Enter</kbd> untuk kirim</span>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm btn-primary rounded-pill px-4 fw-semibold fs-13"
+                                                    :disabled="!newCommentContent.trim() || isSubmittingComment"
+                                                    @click="addComment"
+                                                >
+                                                    <i class="ri-send-plane-fill me-1"></i> Kirim Pesan
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
 
