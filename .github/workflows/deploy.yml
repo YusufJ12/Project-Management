@@ -49,6 +49,14 @@ jobs:
           echo "CLEAN_PORT=$CLEAN_PORT" >> $GITHUB_ENV
           echo "CLEAN_TARGET=$CLEAN_TARGET" >> $GITHUB_ENV
 
+      - name: Write Firebase Service Account if Secret Exists
+        if: env.HAS_FCM_SECRET != ''
+        run: |
+          mkdir -p storage/app/firebase
+          echo "$HAS_FCM_SECRET" > storage/app/firebase/service-account.json
+        env:
+          HAS_FCM_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
       - name: Deploy via Rsync
         uses: easingthemes/ssh-deploy@v5.1.0
         with:
@@ -59,7 +67,7 @@ jobs:
           REMOTE_USER: ${{ env.CLEAN_USER }}
           REMOTE_PORT: ${{ env.CLEAN_PORT }}
           TARGET: ${{ env.CLEAN_TARGET }}
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/, /storage/app/public/, /public/storage"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/, /storage/app/public/, /storage/app/firebase/, /public/storage"
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
           ARGS: "-rlgoDzvc -i --delete"
@@ -68,7 +76,7 @@ jobs:
           REMOTE_USER: ${{ env.CLEAN_USER }}
           REMOTE_PORT: ${{ env.CLEAN_PORT }}
           TARGET: ${{ env.CLEAN_TARGET }}
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/, /storage/app/public/, /public/storage"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/, /storage/app/public/, /storage/app/firebase/, /public/storage"
 
       - name: Run Post-Deployment Commands
         uses: appleboy/ssh-action@v1.0.3
