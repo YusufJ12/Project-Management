@@ -6,6 +6,8 @@ use App\Models\ActivityLog;
 use App\Models\Task;
 use App\Models\TaskList;
 use App\Models\TaskStage;
+use App\Services\TaskNotificationService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 class TaskController extends Controller
 {
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
             'list_id' => ['required', 'exists:lists,id'],
@@ -34,7 +36,18 @@ class TaskController extends Controller
 
         // Otorisasi: Pengguna harus anggota workspace
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Anda tidak memiliki hak akses untuk membuat task di proyek ini.'], 403);
+            }
             return back()->with('error', 'Anda tidak memiliki hak akses untuk membuat task di proyek ini.');
+        }
+
+        // Cek peran Viewer
+        if ($user->isViewerInSpace($space)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
+            }
+            return back()->with('error', 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.');
         }
 
         // Pastikan stage milik list yang sama
@@ -77,6 +90,14 @@ class TaskController extends Controller
             ],
         ]);
 
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Task '{$task->title}' berhasil dibuat!",
+                'task' => $task,
+            ], 201);
+        }
+
         return back()->with('success', "Task '{$task->title}' berhasil dibuat!");
     }
 
@@ -91,6 +112,8 @@ class TaskController extends Controller
             'checklists.completedBy:id,name,email',
             'comments.user:id,name,email',
             'attachments.uploader:id,name,email',
+            'dependencies:id,title,start_date,due_at',
+            'dependents:id,title,start_date,due_at',
         ]);
 
         $space = $task->list->space;
@@ -131,10 +154,12 @@ class TaskController extends Controller
             'estimate_minutes' => ['nullable', 'integer', 'min:0'],
             'assignee_ids' => ['nullable', 'array'],
             'assignee_ids.*' => ['exists:users,id'],
+            'dependency_ids' => ['nullable', 'array'],
+            'dependency_ids.*' => ['exists:tasks,id'],
         ]);
 
         $user = Auth::user();
-        $task->load('list.space');
+        $task->load('list.space.workspace', 'stage');
         $space = $task->list->space;
 
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
@@ -143,6 +168,18 @@ class TaskController extends Controller
             }
             return back()->with('error', 'Akses ditolak.');
         }
+
+        // Cek peran Viewer
+        if ($user->isViewerInSpace($space)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
+            }
+            return back()->with('error', 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.');
+        }
+
+        $wasDone = (bool) ($task->stage?->is_done);
+        $oldStartDate = $task->start_date ? Carbon::parse($task->start_date)->toDateString() : null;
+        $oldDueAt = $task->due_at ? Carbon::parse($task->due_at)->toDateString() : null;
 
         // Cek perubahan stage
         if (! empty($validated['stage_id']) && (int) $validated['stage_id'] !== (int) $task->stage_id) {
@@ -197,6 +234,28 @@ class TaskController extends Controller
             $task->assignees()->sync($validated['assignee_ids']);
         }
 
+        // Sync dependencies if provided
+        if (isset($validated['dependency_ids'])) {
+            $task->dependencies()->sync($validated['dependency_ids']);
+            $task->adjustDatesToDependencies();
+        }
+
+        // Check if dates changed to trigger cascading timeline shift
+        $task->refresh();
+        $newStartDate = $task->start_date ? Carbon::parse($task->start_date)->toDateString() : null;
+        $newDueAt = $task->due_at ? Carbon::parse($task->due_at)->toDateString() : null;
+
+        if ($oldStartDate !== $newStartDate || $oldDueAt !== $newDueAt) {
+            $task->cascadeTimeline();
+        }
+
+        // Cek apakah berpindah ke stage done (sebelumnya belum done)
+        $task->load('stage');
+        $isDone = (bool) ($task->stage?->is_done);
+        if (! $wasDone && $isDone) {
+            TaskNotificationService::notifyTaskCompleted($task, $user);
+        }
+
         ActivityLog::create([
             'workspace_id' => $space->workspace_id,
             'space_id' => $space->id,
@@ -217,6 +276,8 @@ class TaskController extends Controller
                 'checklists.completedBy:id,name,email',
                 'comments.user:id,name,email',
                 'attachments.uploader:id,name,email',
+                'dependencies:id,title,start_date,due_at',
+                'dependents:id,title,start_date,due_at',
             ]);
 
             return response()->json([
@@ -237,11 +298,16 @@ class TaskController extends Controller
         ]);
 
         $user = Auth::user();
-        $task->load('list.space');
+        $task->load('list.space.workspace', 'stage');
         $space = $task->list->space;
 
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
             return response()->json(['error' => 'Akses ditolak.'], 403);
+        }
+
+        // Cek peran Viewer
+        if ($user->isViewerInSpace($space)) {
+            return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
         }
 
         $newStageId = (int) $validated['stage_id'];
@@ -252,6 +318,9 @@ class TaskController extends Controller
         $targetStage = TaskStage::where('id', $newStageId)
             ->where('list_id', $task->list_id)
             ->firstOrFail();
+
+        $wasDone = (bool) ($task->stage?->is_done);
+        $isDone = (bool) ($targetStage->is_done);
 
         DB::transaction(function () use ($task, $oldStageId, $newStageId, $oldPosition, $newPosition, $targetStage, $space, $user) {
             if ($oldStageId === $newStageId) {
@@ -306,6 +375,12 @@ class TaskController extends Controller
             }
         });
 
+        // Email notification jika berpindah ke stage done
+        if (! $wasDone && $isDone) {
+            $task->load('stage');
+            TaskNotificationService::notifyTaskCompleted($task, $user);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Task berhasil dipindahkan.',
@@ -317,19 +392,37 @@ class TaskController extends Controller
         ]);
     }
 
-    public function destroy(Task $task): RedirectResponse
+    public function destroy(Request $request, Task $task): JsonResponse|RedirectResponse
     {
         $user = Auth::user();
-        $task->load('list.space');
+        $task->load('list.space.workspace');
+        $space = $task->list->space;
 
-        if (! $user->workspaces()->where('workspaces.id', $task->list->space->workspace_id)->exists()) {
+        if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Tidak berwenang menghapus task ini.'], 403);
+            }
             return back()->with('error', 'Tidak berwenang menghapus task ini.');
+        }
+
+        // Cek peran Viewer
+        if ($user->isViewerInSpace($space)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
+            }
+            return back()->with('error', 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.');
         }
 
         $title = $task->title;
         $task->delete();
 
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Task '{$title}' berhasil dihapus.",
+            ]);
+        }
+
         return back()->with('success', "Task '{$title}' berhasil dihapus.");
     }
 }
-

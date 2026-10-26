@@ -11,6 +11,8 @@ use App\Models\Task;
 use App\Models\TaskChecklist;
 use App\Models\TaskList;
 use App\Models\TaskStage;
+use App\Services\TaskNotificationService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,17 +27,26 @@ class TaskApiController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'priority' => ['nullable', 'in:low,medium,high,urgent'],
             'description' => ['nullable', 'string'],
+            'start_date' => ['nullable', 'date'],
             'due_at' => ['nullable', 'date'],
             'assignee_ids' => ['nullable', 'array'],
             'assignee_ids.*' => ['exists:users,id'],
         ]);
 
         $user = $request->user();
-        $list = TaskList::with('space')->findOrFail($validated['list_id']);
+        $list = TaskList::with('space.workspace')->findOrFail($validated['list_id']);
         $space = $list->space;
 
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
+        }
+
+        if ($user->isViewerInSpace($space)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+                'error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+            ], 403);
         }
 
         $stage = TaskStage::where('id', $validated['stage_id'])
@@ -53,6 +64,7 @@ class TaskApiController extends Controller
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
             'priority' => $validated['priority'] ?? 'medium',
+            'start_date' => $validated['start_date'] ?? null,
             'due_at' => $validated['due_at'] ?? null,
             'position' => $maxPosition + 1,
         ]);
@@ -100,6 +112,8 @@ class TaskApiController extends Controller
             'assignees',
             'checklists.completedBy',
             'comments.user',
+            'dependencies:id,title,start_date,due_at',
+            'dependents:id,title,start_date,due_at',
         ]);
 
         return response()->json([
@@ -115,31 +129,67 @@ class TaskApiController extends Controller
             'description' => ['nullable', 'string'],
             'priority' => ['required', 'in:low,medium,high,urgent'],
             'stage_id' => ['nullable', 'exists:task_stages,id'],
+            'start_date' => ['nullable', 'date'],
             'due_at' => ['nullable', 'date'],
             'estimate_minutes' => ['nullable', 'integer', 'min:0'],
             'assignee_ids' => ['nullable', 'array'],
             'assignee_ids.*' => ['exists:users,id'],
+            'dependency_ids' => ['nullable', 'array'],
+            'dependency_ids.*' => ['exists:tasks,id'],
         ]);
 
         $user = $request->user();
-        $task->load('list.space');
+        $task->load('list.space.workspace', 'stage');
         $space = $task->list->space;
 
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
         }
 
+        if ($user->isViewerInSpace($space)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+                'error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+            ], 403);
+        }
+
+        $wasDone = (bool) ($task->stage?->is_done);
+        $oldStartDate = $task->start_date ? Carbon::parse($task->start_date)->toDateString() : null;
+        $oldDueAt = $task->due_at ? Carbon::parse($task->due_at)->toDateString() : null;
+
         $task->update([
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
             'priority' => $validated['priority'],
             'stage_id' => $validated['stage_id'] ?? $task->stage_id,
+            'start_date' => $validated['start_date'] ?? null,
             'due_at' => $validated['due_at'] ?? null,
             'estimate_minutes' => $validated['estimate_minutes'] ?? null,
         ]);
 
         if (isset($validated['assignee_ids'])) {
             $task->assignees()->sync($validated['assignee_ids']);
+        }
+
+        if (isset($validated['dependency_ids'])) {
+            $task->dependencies()->sync($validated['dependency_ids']);
+            $task->adjustDatesToDependencies();
+        }
+
+        $task->refresh();
+        $newStartDate = $task->start_date ? Carbon::parse($task->start_date)->toDateString() : null;
+        $newDueAt = $task->due_at ? Carbon::parse($task->due_at)->toDateString() : null;
+
+        if ($oldStartDate !== $newStartDate || $oldDueAt !== $newDueAt) {
+            $task->cascadeTimeline();
+        }
+
+        // Email notification jika berubah ke status done
+        $task->load('stage');
+        $isDone = (bool) ($task->stage?->is_done);
+        if (! $wasDone && $isDone) {
+            TaskNotificationService::notifyTaskCompleted($task, $user);
         }
 
         $task->load(['stage', 'assignees', 'checklists']);
@@ -159,11 +209,19 @@ class TaskApiController extends Controller
         ]);
 
         $user = $request->user();
-        $task->load('list.space');
+        $task->load('list.space.workspace', 'stage');
         $space = $task->list->space;
 
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
+        }
+
+        if ($user->isViewerInSpace($space)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+                'error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+            ], 403);
         }
 
         $newStageId = (int) $validated['stage_id'];
@@ -174,6 +232,9 @@ class TaskApiController extends Controller
         $targetStage = TaskStage::where('id', $newStageId)
             ->where('list_id', $task->list_id)
             ->firstOrFail();
+
+        $wasDone = (bool) ($task->stage?->is_done);
+        $isDone = (bool) ($targetStage->is_done);
 
         DB::transaction(function () use ($task, $oldStageId, $newStageId, $oldPosition, $newPosition, $targetStage, $space, $user) {
             if ($oldStageId === $newStageId) {
@@ -221,6 +282,12 @@ class TaskApiController extends Controller
             }
         });
 
+        // Email notification jika berpindah ke stage done
+        if (! $wasDone && $isDone) {
+            $task->load('stage');
+            TaskNotificationService::notifyTaskCompleted($task, $user);
+        }
+
         $task->load(['stage', 'assignees', 'checklists']);
 
         return response()->json([
@@ -233,11 +300,19 @@ class TaskApiController extends Controller
     public function destroy(Request $request, Task $task): JsonResponse
     {
         $user = $request->user();
-        $task->load('list.space');
+        $task->load('list.space.workspace');
         $space = $task->list->space;
 
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
+        }
+
+        if ($user->isViewerInSpace($space)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+                'error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+            ], 403);
         }
 
         $task->delete();
@@ -255,11 +330,19 @@ class TaskApiController extends Controller
         ]);
 
         $user = $request->user();
-        $task->load('list.space');
+        $task->load('list.space.workspace');
         $space = $task->list->space;
 
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
+        }
+
+        if ($user->isViewerInSpace($space)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+                'error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+            ], 403);
         }
 
         $maxPos = $task->checklists()->max('position') ?? 0;
@@ -279,11 +362,19 @@ class TaskApiController extends Controller
     public function toggleChecklist(Request $request, Task $task, TaskChecklist $checklist): JsonResponse
     {
         $user = $request->user();
-        $task->load('list.space');
+        $task->load('list.space.workspace');
         $space = $task->list->space;
 
         if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists() || $checklist->task_id !== $task->id) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
+        }
+
+        if ($user->isViewerInSpace($space)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+                'error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.',
+            ], 403);
         }
 
         $newStatus = ! $checklist->is_completed;
@@ -309,10 +400,14 @@ class TaskApiController extends Controller
         ]);
 
         $user = $request->user();
-        $task->load('list.space');
+        $task->load('list.space.workspace');
         $space = $task->list->space;
 
-        if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+        $hasAccess = $user->isSuperAdmin() ||
+            $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists() ||
+            $space->members()->where('users.id', $user->id)->exists();
+
+        if (! $hasAccess) {
             return response()->json(['status' => 'error', 'message' => 'Akses ditolak.'], 403);
         }
 
@@ -350,4 +445,3 @@ class TaskApiController extends Controller
         ]);
     }
 }
-

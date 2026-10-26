@@ -29,6 +29,13 @@ class TaskStageController extends Controller
         $space = $list->space;
         $workspace = $space->workspace;
 
+        if ($user->isViewerInSpace($space)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
+            }
+            return back()->with('error', 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.');
+        }
+
         $canManage = $user->isSuperAdmin() ||
             $workspace->owner_id === $user->id ||
             $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
@@ -108,6 +115,13 @@ class TaskStageController extends Controller
         $space = $stage->list->space;
         $workspace = $space->workspace;
 
+        if ($user->isViewerInSpace($space)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
+            }
+            return back()->with('error', 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.');
+        }
+
         $canManage = $user->isSuperAdmin() ||
             $workspace->owner_id === $user->id ||
             $workspace->members()->where('users.id', $user->id)->wherePivot('role', 'admin')->exists() ||
@@ -145,6 +159,13 @@ class TaskStageController extends Controller
         $stage->load('list.space.workspace');
         $space = $stage->list->space;
         $workspace = $space->workspace;
+
+        if ($user->isViewerInSpace($space)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
+            }
+            return back()->with('error', 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.');
+        }
 
         $canManage = $user->isSuperAdmin() ||
             $workspace->owner_id === $user->id ||

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onUnmounted } from 'vue';
 import { formatDateShort } from '@/Utils/date';
 
 const props = defineProps({
@@ -10,6 +10,10 @@ const props = defineProps({
     stages: {
         type: Array,
         default: () => [],
+    },
+    readOnly: {
+        type: Boolean,
+        default: false,
     },
 });
 
@@ -22,6 +26,13 @@ const selectedStageFilter = ref('all');
 
 // Navigation offset in weeks
 const currentOffset = ref(0);
+
+// Ref to canvas element for measuring width during drag/resize
+const canvasRef = ref(null);
+
+// Drag & Resize State
+const dragAction = ref(null);
+const wasJustDragging = ref(false);
 
 // Colors matching task priority / status
 const getTaskColor = (task) => {
@@ -123,21 +134,61 @@ const formatTaskDates = (task) => {
     return formatDateShort(task.start_date);
 };
 
-// Calculate Bar position and width in %
-const getTaskBarStyle = (task) => {
-    // Default fallback dates if not set
-    let startMs = task.start_date ? new Date(task.start_date).getTime() : null;
-    let endMs = task.due_at ? new Date(task.due_at).getTime() + (24 * 60 * 60 * 1000 - 1) : null;
+// Date range calculation helper for a task
+const getTaskDateRange = (task) => {
+    let startMs = null;
+    let endMs = null;
+
+    if (task.start_date) {
+        const clean = typeof task.start_date === 'string' ? task.start_date.substring(0, 10) : '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+            const [y, m, d] = clean.split('-').map(Number);
+            startMs = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+        }
+    }
+
+    if (task.due_at) {
+        const clean = typeof task.due_at === 'string' ? task.due_at.substring(0, 10) : '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+            const [y, m, d] = clean.split('-').map(Number);
+            endMs = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+        }
+    }
 
     if (!startMs && !endMs) {
-        // Fallback: use created_at to created_at + 3 days
         const created = task.created_at ? new Date(task.created_at) : new Date();
+        created.setHours(0, 0, 0, 0);
         startMs = created.getTime();
-        endMs = startMs + 3 * 24 * 60 * 60 * 1000;
+        endMs = startMs + 3 * 86400000 - 1;
     } else if (!startMs) {
-        startMs = endMs - 2 * 24 * 60 * 60 * 1000;
+        startMs = endMs - 2 * 86400000 + 1;
     } else if (!endMs) {
-        endMs = startMs + 2 * 24 * 60 * 60 * 1000;
+        endMs = startMs + 2 * 86400000 - 1;
+    }
+
+    return { startMs, endMs };
+};
+
+const formatDateToYmd = (ms) => {
+    const d = new Date(ms);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+// Calculate Bar position and width in %
+const getTaskBarStyle = (task) => {
+    let startMs;
+    let endMs;
+
+    if (dragAction.value && dragAction.value.task.id === task.id) {
+        startMs = dragAction.value.currentStartMs;
+        endMs = dragAction.value.currentEndMs;
+    } else {
+        const range = getTaskDateRange(task);
+        startMs = range.startMs;
+        endMs = range.endMs;
     }
 
     // Clip if out of view
@@ -151,6 +202,120 @@ const getTaskBarStyle = (task) => {
         backgroundColor: getTaskColor(task),
     };
 };
+
+// Live tooltip dates during drag
+const activeDragDatesText = computed(() => {
+    if (!dragAction.value) return '';
+    const startStr = formatDateToYmd(dragAction.value.currentStartMs);
+    const endStr = formatDateToYmd(dragAction.value.currentEndMs);
+    return `${formatDateShort(startStr)} - ${formatDateShort(endStr)}`;
+});
+
+// Drag and Resize Handlers
+const onBarMouseDown = (e, task) => {
+    if (props.readOnly) return;
+    if (e.button !== 0) return;
+    if (e.target.closest('.gantt-resize-handle')) return;
+
+    startDrag(e, task, 'move');
+};
+
+const onHandleMouseDown = (e, task, mode) => {
+    if (props.readOnly) return;
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    startDrag(e, task, mode);
+};
+
+const startDrag = (e, task, mode) => {
+    const canvas = canvasRef.value;
+    if (!canvas) return;
+
+    const canvasWidth = canvas.getBoundingClientRect().width || 1;
+    const { startMs, endMs } = getTaskDateRange(task);
+
+    dragAction.value = {
+        task,
+        mode,
+        startX: e.clientX,
+        originalStartMs: startMs,
+        originalEndMs: endMs,
+        currentStartMs: startMs,
+        currentEndMs: endMs,
+        canvasWidth,
+        hasMoved: false,
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+};
+
+const onMouseMove = (e) => {
+    if (!dragAction.value) return;
+
+    const action = dragAction.value;
+    const deltaX = e.clientX - action.startX;
+
+    if (Math.abs(deltaX) > 3) {
+        action.hasMoved = true;
+    }
+
+    const deltaMs = (deltaX / action.canvasWidth) * totalTimelineDurationMs.value;
+    const deltaDays = Math.round(deltaMs / 86400000);
+    const snappedDeltaMs = deltaDays * 86400000;
+
+    if (action.mode === 'move') {
+        action.currentStartMs = action.originalStartMs + snappedDeltaMs;
+        action.currentEndMs = action.originalEndMs + snappedDeltaMs;
+    } else if (action.mode === 'resize-start') {
+        const newStart = action.originalStartMs + snappedDeltaMs;
+        // Don't let start exceed end (leave at least 1 day duration)
+        action.currentStartMs = Math.min(newStart, action.currentEndMs - 86400000 + 1);
+    } else if (action.mode === 'resize-end') {
+        const newEnd = action.originalEndMs + snappedDeltaMs;
+        // Don't let end be less than start (leave at least 1 day duration)
+        action.currentEndMs = Math.max(newEnd, action.currentStartMs + 86400000 - 1);
+    }
+};
+
+const onMouseUp = () => {
+    if (!dragAction.value) return;
+
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+
+    const action = dragAction.value;
+    dragAction.value = null;
+
+    if (action.hasMoved) {
+        wasJustDragging.value = true;
+        setTimeout(() => {
+            wasJustDragging.value = false;
+        }, 150);
+
+        const newStartStr = formatDateToYmd(action.currentStartMs);
+        const newEndStr = formatDateToYmd(action.currentEndMs);
+
+        // Check if dates actually changed
+        if (newStartStr !== action.task.start_date || newEndStr !== action.task.due_at) {
+            emit('update-task-dates', {
+                taskId: action.task.id,
+                startDate: newStartStr,
+                dueAt: newEndStr,
+            });
+        }
+    }
+};
+
+const onBarClick = (task) => {
+    if (wasJustDragging.value) return;
+    emit('open-task', task);
+};
+
+onUnmounted(() => {
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+});
 
 const jumpToToday = () => {
     currentOffset.value = 0;
@@ -246,6 +411,14 @@ const nextTime = () => {
                         <div class="d-flex align-items-center gap-2 text-truncate pe-2">
                             <span class="status-indicator" :style="{ backgroundColor: getTaskColor(task) }"></span>
                             <span class="fw-semibold fs-13 text-body text-truncate" :title="task.title">{{ task.title }}</span>
+                            <!-- Dependency badge in list -->
+                            <span
+                                v-if="task.dependencies?.length"
+                                class="badge bg-secondary-subtle text-secondary rounded-pill px-1-5 py-0 fs-10 flex-shrink-0"
+                                :title="`${task.dependencies.length} dependensi tugas`"
+                            >
+                                <i class="ri-links-line me-1"></i>{{ task.dependencies.length }}
+                            </span>
                         </div>
                         <span class="fs-11 text-muted text-nowrap">
                             {{ formatTaskDates(task) }}
@@ -280,7 +453,7 @@ const nextTime = () => {
                 </div>
 
                 <!-- Grid Canvas & Task Bars -->
-                <div class="gantt-canvas position-relative">
+                <div class="gantt-canvas position-relative" ref="canvasRef">
                     <!-- Vertical Grid Lines -->
                     <div class="gantt-grid-lines d-flex position-absolute top-0 bottom-0 start-0 end-0 pointer-events-none">
                         <div
@@ -308,14 +481,57 @@ const nextTime = () => {
                     >
                         <!-- Timeline Bar Pill -->
                         <div
-                            class="gantt-bar rounded-pill position-absolute d-flex align-items-center px-2 shadow-xs cursor-pointer"
+                            class="gantt-bar rounded-pill position-absolute d-flex align-items-center px-2 shadow-xs"
+                            :class="{
+                                'is-dragging': dragAction?.task.id === task.id,
+                                'cursor-grab': !readOnly,
+                                'cursor-pointer': readOnly,
+                            }"
                             :style="getTaskBarStyle(task)"
                             :title="`${task.title} (${formatTaskDates(task)})`"
-                            @click="emit('open-task', task)"
+                            @mousedown="onBarMouseDown($event, task)"
+                            @click="onBarClick(task)"
                         >
+                            <!-- Left Resize Handle (start_date) -->
+                            <div
+                                v-if="!readOnly"
+                                class="gantt-resize-handle start-handle"
+                                title="Tarik untuk ubah tanggal mulai"
+                                @mousedown.stop="onHandleMouseDown($event, task, 'resize-start')"
+                            ></div>
+
+                            <!-- Dependency link indicator badge on Gantt Bar -->
+                            <span
+                                v-if="task.dependencies?.length"
+                                class="badge bg-white text-dark rounded-circle p-0 me-1 d-inline-flex align-items-center justify-content-center shadow-2xs flex-shrink-0"
+                                style="width: 16px; height: 16px; font-size: 9px;"
+                                :title="`Bergantung pada ${task.dependencies.length} tugas lain`"
+                            >
+                                <i class="ri-links-line"></i>
+                            </span>
+
                             <span class="gantt-bar-title text-white fs-11 fw-semibold text-truncate pe-1">
                                 {{ task.title }}
                             </span>
+
+                            <!-- Right Resize Handle (due_at) -->
+                            <div
+                                v-if="!readOnly"
+                                class="gantt-resize-handle end-handle"
+                                title="Tarik untuk ubah tenggat waktu"
+                                @mousedown.stop="onHandleMouseDown($event, task, 'resize-end')"
+                            ></div>
+
+                            <!-- Live Floating Tooltip during Dragging -->
+                            <div
+                                v-if="dragAction?.task.id === task.id"
+                                class="gantt-drag-tooltip position-absolute"
+                            >
+                                <div class="badge bg-dark text-white shadow py-1 px-2 fs-11 fw-semibold rounded-pill d-flex align-items-center gap-1">
+                                    <i class="ri-calendar-line text-warning"></i>
+                                    <span>{{ activeDragDatesText }}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -326,7 +542,8 @@ const nextTime = () => {
         <div class="gantt-footer p-2 px-3 border-top bg-light-subtle d-flex align-items-center justify-content-between fs-11 text-muted">
             <div class="d-flex align-items-center gap-2">
                 <i class="ri-lightbulb-line text-warning"></i>
-                <span>Klik task di daftar atau pada timeline bar hijau untuk membuka rincian dan mengubah tanggal.</span>
+                <span v-if="!readOnly">Geser timeline bar untuk memindahkan tanggal tugas, atau tarik sisi kiri/kanan untuk menyesuaikan durasi.</span>
+                <span v-else>Mode Viewer (Hanya Baca): Anda dapat melihat timeline dan membuka rincian untuk berdiskusi.</span>
             </div>
             <div class="d-flex align-items-center gap-3">
                 <span class="d-flex align-items-center gap-1">
@@ -334,6 +551,9 @@ const nextTime = () => {
                 </span>
                 <span class="d-flex align-items-center gap-1">
                     <span class="badge rounded-circle bg-success p-1"></span> Bar Hijau = Durasi Task
+                </span>
+                <span class="d-flex align-items-center gap-1">
+                    <i class="ri-links-line text-primary"></i> = Ada Dependensi
                 </span>
             </div>
         </div>
@@ -431,12 +651,59 @@ const nextTime = () => {
     height: 24px;
     z-index: 5;
     transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+    user-select: none;
 }
 
 .gantt-bar:hover {
     transform: translateY(-1px);
     filter: brightness(1.1);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+}
+
+.gantt-bar.is-dragging {
+    transition: none !important;
+    z-index: 25 !important;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35) !important;
+    filter: brightness(1.12);
+}
+
+.cursor-grab {
+    cursor: grab;
+}
+
+.cursor-grab:active, .is-dragging {
+    cursor: grabbing !important;
+}
+
+.gantt-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: ew-resize;
+    z-index: 12;
+    border-radius: 999px;
+    transition: background-color 0.15s;
+}
+
+.gantt-resize-handle:hover {
+    background-color: rgba(255, 255, 255, 0.45);
+}
+
+.start-handle {
+    left: 0;
+}
+
+.end-handle {
+    right: 0;
+}
+
+.gantt-drag-tooltip {
+    top: -32px;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 99;
 }
 
 .pointer-events-none {
@@ -460,4 +727,3 @@ const nextTime = () => {
     border-color: var(--bs-primary);
 }
 </style>
-

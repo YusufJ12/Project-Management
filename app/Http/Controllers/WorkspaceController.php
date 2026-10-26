@@ -196,7 +196,7 @@ class WorkspaceController extends Controller
 
         $validated = $request->validate([
             'user_id' => ['required', 'exists:users,id'],
-            'role' => ['required', 'in:admin,member'],
+            'role' => ['required', 'in:admin,member,viewer'],
         ]);
 
         $targetUser = User::findOrFail($validated['user_id']);
@@ -215,7 +215,7 @@ class WorkspaceController extends Controller
         foreach ($workspace->spaces as $space) {
             if (! $space->members()->where('users.id', $targetUser->id)->exists()) {
                 $space->members()->attach($targetUser->id, [
-                    'role' => 'member',
+                    'role' => $validated['role'] === 'viewer' ? 'viewer' : 'member',
                     'joined_at' => now(),
                 ]);
             }
@@ -254,7 +254,7 @@ class WorkspaceController extends Controller
         }
 
         $validated = $request->validate([
-            'role' => ['required', 'in:admin,member'],
+            'role' => ['required', 'in:admin,member,viewer'],
         ]);
 
         $workspace->members()->updateExistingPivot($user->id, [

@@ -90,4 +90,47 @@ class User extends Authenticatable
 
         return $membership && in_array($membership->pivot->role, $roles, true);
     }
+
+    /**
+     * Get user's effective role in a space ('owner', 'manager', 'admin', 'member', 'viewer').
+     */
+    public function getEffectiveRoleInSpace(Space $space): string
+    {
+        if ($this->isSuperAdmin()) {
+            return 'admin';
+        }
+
+        $workspace = $space->relationLoaded('workspace') ? $space->workspace : $space->workspace()->first();
+        if ($workspace && (int) $workspace->owner_id === (int) $this->id) {
+            return 'owner';
+        }
+
+        $wsMembership = $this->workspaces()->where('workspaces.id', $space->workspace_id)->first();
+        $wsRole = $wsMembership?->pivot?->role;
+
+        if ($wsRole === 'admin') {
+            return 'admin';
+        }
+
+        $spaceMembership = $space->members()->where('users.id', $this->id)->first();
+        $spRole = $spaceMembership?->pivot?->role;
+
+        if ($spRole === 'manager') {
+            return 'manager';
+        }
+
+        if ($spRole === 'viewer' || $wsRole === 'viewer') {
+            return 'viewer';
+        }
+
+        return $spRole ?? $wsRole ?? 'member';
+    }
+
+    /**
+     * Check if user has viewer role in the space or workspace.
+     */
+    public function isViewerInSpace(Space $space): bool
+    {
+        return $this->getEffectiveRoleInSpace($space) === 'viewer';
+    }
 }

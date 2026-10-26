@@ -59,7 +59,7 @@ jobs:
           REMOTE_USER: ${{ env.CLEAN_USER }}
           REMOTE_PORT: ${{ env.CLEAN_PORT }}
           TARGET: ${{ env.CLEAN_TARGET }}
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/, /storage/app/public/, /public/storage"
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
           ARGS: "-rlgoDzvc -i --delete"
@@ -68,7 +68,7 @@ jobs:
           REMOTE_USER: ${{ env.CLEAN_USER }}
           REMOTE_PORT: ${{ env.CLEAN_PORT }}
           TARGET: ${{ env.CLEAN_TARGET }}
-          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/"
+          EXCLUDE: "/.git/, /.github/, /node_modules/, /.env, /storage/logs/, /storage/framework/sessions/, /storage/app/public/, /public/storage"
 
       - name: Run Post-Deployment Commands
         uses: appleboy/ssh-action@v1.0.3

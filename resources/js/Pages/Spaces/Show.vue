@@ -21,6 +21,20 @@ const props = defineProps({
 const page = usePage();
 const activeTab = ref('kanban'); // 'kanban', 'overview', 'settings'
 
+// RBAC: Check if current user is viewer
+const currentUser = computed(() => page.props.auth?.user);
+const currentSpaceMember = computed(() => {
+    if (!currentUser.value || !localSpace.value?.members) return null;
+    return localSpace.value.members.find((m) => m.id === currentUser.value.id);
+});
+const isViewer = computed(() => {
+    if (currentUser.value?.is_super_admin) return false;
+    if (currentSpaceMember.value?.pivot?.role === 'viewer') return true;
+    if (page.props.auth?.currentWorkspace?.role === 'viewer') return true;
+    if (currentUser.value?.role === 'viewer') return true;
+    return false;
+});
+
 // Reactive copy of Space for smooth background real-time updates
 const localSpace = ref(JSON.parse(JSON.stringify(props.space)));
 
@@ -159,6 +173,7 @@ const stageColorPresets = [
 ];
 
 const openAddStageForm = (afterStageId = null) => {
+    if (isViewer.value) return;
     newStageName.value = '';
     newStageColor.value = stageColorPresets[Math.floor(Math.random() * stageColorPresets.length)];
     newStageIsDone.value = false;
@@ -173,6 +188,7 @@ const cancelAddStage = () => {
 };
 
 const submitCreateStage = async () => {
+    if (isViewer.value) return;
     if (!newStageName.value.trim() || isSubmittingStage.value || !currentList.value) return;
 
     isSubmittingStage.value = true;
@@ -231,6 +247,10 @@ const submitCreateStage = async () => {
 };
 
 const deleteStage = async (stage) => {
+    if (isViewer.value) {
+        showToast('Anda hanya memiliki akses Viewer (baca saja).', 'error');
+        return;
+    }
     const confirmed = await confirmDelete({
         title: 'Hapus Tahapan Status?',
         text: `Yakin ingin menghapus tahapan status "${stage.name}"? Tugas di dalamnya akan otomatis dialihkan ke tahapan lain.`,
@@ -268,6 +288,7 @@ const quickTaskPriority = ref('medium');
 const isSubmittingTask = ref(false);
 
 const openQuickAdd = (stageId) => {
+    if (isViewer.value) return;
     activeQuickAddStageId.value = stageId;
     quickTaskTitle.value = '';
     quickTaskPriority.value = 'medium';
@@ -279,6 +300,7 @@ const cancelQuickAdd = () => {
 };
 
 const submitQuickTask = (stageId) => {
+    if (isViewer.value) return;
     if (!quickTaskTitle.value.trim() || isSubmittingTask.value) return;
 
     isSubmittingTask.value = true;
@@ -303,6 +325,10 @@ const submitQuickTask = (stageId) => {
 
 // Delete Task
 const deleteTask = async (task) => {
+    if (isViewer.value) {
+        showToast('Anda hanya memiliki akses Viewer (baca saja).', 'error');
+        return;
+    }
     const confirmed = await confirmDelete({
         title: 'Hapus Task?',
         text: `Yakin ingin menghapus task "${task.title}"?`,
@@ -358,6 +384,8 @@ const taskStartDate = ref('');
 const taskDueAt = ref('');
 const taskEstimateMinutes = ref('');
 const taskAssigneeIds = ref([]);
+const taskDependencyIds = ref([]);
+const selectedPrerequisiteTaskId = ref('');
 
 // Checklist Subsystem
 const newChecklistTitle = ref('');
@@ -387,6 +415,8 @@ const openTaskModal = async (task) => {
     taskDueAt.value = task.due_at ? String(task.due_at).substring(0, 10) : '';
     taskEstimateMinutes.value = task.estimate_minutes || '';
     taskAssigneeIds.value = task.assignees ? task.assignees.map((a) => a.id) : [];
+    taskDependencyIds.value = task.dependencies ? task.dependencies.map((d) => d.id) : [];
+    selectedPrerequisiteTaskId.value = '';
     newChecklistTitle.value = '';
     newCommentContent.value = '';
     taskModalTab.value = 'details';
@@ -408,7 +438,9 @@ const openTaskModal = async (task) => {
                 selectedTask.value = data.task;
                 taskStartDate.value = data.task.start_date ? String(data.task.start_date).substring(0, 10) : '';
                 taskDueAt.value = data.task.due_at ? String(data.task.due_at).substring(0, 10) : '';
+                taskDependencyIds.value = data.task.dependencies ? data.task.dependencies.map((d) => d.id) : [];
                 taskActivityLogs.value = data.activity_logs || [];
+                syncTaskInLocalSpace(data.task);
             }
         }
     } catch (err) {
@@ -421,11 +453,36 @@ const openTaskModal = async (task) => {
 const closeTaskModal = () => {
     isTaskModalOpen.value = false;
     selectedTask.value = null;
+    taskDependencyIds.value = [];
+    selectedPrerequisiteTaskId.value = '';
+};
+
+// Sync updated task into localSpace across lists & stages
+const syncTaskInLocalSpace = (updatedTask) => {
+    if (!localSpace.value?.lists) return;
+    for (const l of localSpace.value.lists) {
+        for (const s of l.stages || []) {
+            const idx = (s.tasks || []).findIndex((t) => t.id === updatedTask.id);
+            if (idx > -1) {
+                if (s.id !== updatedTask.stage_id) {
+                    s.tasks.splice(idx, 1);
+                    const targetStage = l.stages.find((stg) => stg.id === updatedTask.stage_id);
+                    if (targetStage) {
+                        if (!targetStage.tasks) targetStage.tasks = [];
+                        targetStage.tasks.push(updatedTask);
+                    }
+                } else {
+                    s.tasks[idx] = { ...s.tasks[idx], ...updatedTask };
+                }
+            }
+        }
+    }
 };
 
 // Save Task Attributes
 const saveTaskDetails = async (showAlert = false) => {
     if (!selectedTask.value || isSavingTask.value) return;
+    if (isViewer.value) return;
 
     isSavingTask.value = true;
     try {
@@ -445,6 +502,7 @@ const saveTaskDetails = async (showAlert = false) => {
                 due_at: taskDueAt.value || null,
                 estimate_minutes: taskEstimateMinutes.value ? parseInt(taskEstimateMinutes.value) : null,
                 assignee_ids: taskAssigneeIds.value,
+                dependency_ids: taskDependencyIds.value,
             }),
         });
 
@@ -452,26 +510,8 @@ const saveTaskDetails = async (showAlert = false) => {
             const data = await res.json();
             if (data.task) {
                 selectedTask.value = data.task;
-                // Optimistically update local task in localSpace
-                if (localSpace.value?.lists) {
-                    for (const l of localSpace.value.lists) {
-                        for (const s of l.stages || []) {
-                            const idx = (s.tasks || []).findIndex((t) => t.id === data.task.id);
-                            if (idx > -1) {
-                                if (s.id !== data.task.stage_id) {
-                                    s.tasks.splice(idx, 1);
-                                    const targetStage = l.stages.find((stg) => stg.id === data.task.stage_id);
-                                    if (targetStage) {
-                                        if (!targetStage.tasks) targetStage.tasks = [];
-                                        targetStage.tasks.push(data.task);
-                                    }
-                                } else {
-                                    s.tasks[idx] = data.task;
-                                }
-                            }
-                        }
-                    }
-                }
+                taskDependencyIds.value = data.task.dependencies ? data.task.dependencies.map((d) => d.id) : [];
+                syncTaskInLocalSpace(data.task);
             }
             if (showAlert) {
                 showToast('Perubahan task berhasil disimpan!', 'success');
@@ -488,6 +528,88 @@ const saveTaskDetails = async (showAlert = false) => {
         }
     } finally {
         isSavingTask.value = false;
+    }
+};
+
+// Task Dependencies Helpers
+const addDependency = async (prereqTaskId) => {
+    if (isViewer.value) return;
+    const id = parseInt(prereqTaskId);
+    if (!id || taskDependencyIds.value.includes(id)) return;
+
+    taskDependencyIds.value.push(id);
+    selectedPrerequisiteTaskId.value = '';
+    await saveTaskDetails(true);
+};
+
+const removeDependency = async (prereqTaskId) => {
+    if (isViewer.value) return;
+    const id = parseInt(prereqTaskId);
+    const idx = taskDependencyIds.value.indexOf(id);
+    if (idx > -1) {
+        taskDependencyIds.value.splice(idx, 1);
+        await saveTaskDetails(true);
+    }
+};
+
+// Update task dates emitted from GanttTimeline
+const handleUpdateTaskDates = async ({ taskId, startDate, dueAt }) => {
+    if (isViewer.value) return;
+
+    let updatedTask = null;
+    let oldStartDate = null;
+    let oldDueAt = null;
+
+    for (const list of localSpace.value.lists || []) {
+        for (const stg of list.stages || []) {
+            const found = (stg.tasks || []).find((t) => t.id === taskId);
+            if (found) {
+                updatedTask = found;
+                oldStartDate = found.start_date;
+                oldDueAt = found.due_at;
+                found.start_date = startDate;
+                found.due_at = dueAt;
+                break;
+            }
+        }
+    }
+
+    try {
+        const res = await fetch(`/tasks/${taskId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': getCsrfToken(),
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({
+                title: updatedTask?.title,
+                priority: updatedTask?.priority || 'medium',
+                stage_id: updatedTask?.stage_id,
+                start_date: startDate,
+                due_at: dueAt,
+            }),
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            if (data.task) {
+                syncTaskInLocalSpace(data.task);
+            }
+            showToast('Timeline tugas berhasil diperbarui', 'success');
+        } else {
+            if (updatedTask) {
+                updatedTask.start_date = oldStartDate;
+                updatedTask.due_at = oldDueAt;
+            }
+            showToast('Gagal memperbarui timeline tugas.', 'error');
+        }
+    } catch (e) {
+        if (updatedTask) {
+            updatedTask.start_date = oldStartDate;
+            updatedTask.due_at = oldDueAt;
+        }
+        showToast('Koneksi terputus saat memperbarui timeline tugas.', 'error');
     }
 };
 
@@ -513,6 +635,7 @@ const selectedAssigneeObjects = computed(() => {
 });
 
 const toggleAssignee = (memberId) => {
+    if (isViewer.value) return;
     const idx = taskAssigneeIds.value.indexOf(memberId);
     if (idx > -1) {
         taskAssigneeIds.value.splice(idx, 1);
@@ -523,6 +646,7 @@ const toggleAssignee = (memberId) => {
 };
 
 const removeAssignee = (memberId) => {
+    if (isViewer.value) return;
     taskAssigneeIds.value = taskAssigneeIds.value.filter((id) => id !== memberId);
     saveTaskDetails(false);
 };
@@ -559,6 +683,7 @@ const closeFilePreview = () => {
 
 // Checklist Handlers
 const addChecklist = async () => {
+    if (isViewer.value) return;
     if (!newChecklistTitle.value.trim() || isSubmittingChecklist.value || !selectedTask.value) return;
 
     isSubmittingChecklist.value = true;
@@ -593,7 +718,7 @@ const addChecklist = async () => {
 };
 
 const toggleChecklist = async (chk) => {
-    if (!selectedTask.value) return;
+    if (isViewer.value || !selectedTask.value) return;
 
     try {
         const res = await fetch(`/tasks/${selectedTask.value.id}/checklists/${chk.id}/toggle`, {
@@ -617,7 +742,7 @@ const toggleChecklist = async (chk) => {
 };
 
 const deleteChecklist = async (chk) => {
-    if (!selectedTask.value) return;
+    if (isViewer.value || !selectedTask.value) return;
 
     try {
         const res = await fetch(`/tasks/${selectedTask.value.id}/checklists/${chk.id}`, {
@@ -646,12 +771,14 @@ const checklistProgress = computed(() => {
 
 // Attachment Handlers
 const triggerFileInput = () => {
+    if (isViewer.value) return;
     if (fileInputRef.value) {
         fileInputRef.value.click();
     }
 };
 
 const handleFileUpload = async (event) => {
+    if (isViewer.value) return;
     const file = event.target.files?.[0];
     if (!file || !selectedTask.value) return;
 
@@ -692,6 +819,7 @@ const downloadAttachment = (att) => {
 };
 
 const deleteAttachment = async (att) => {
+    if (isViewer.value) return;
     const confirmed = await confirmDelete({
         title: 'Hapus Lampiran?',
         text: `Yakin ingin menghapus lampiran "${att.original_name}"?`,
@@ -782,12 +910,13 @@ const deleteComment = async (com) => {
 // REAL-TIME KANBAN & CHAT SYNC
 // ==========================================
 const isDraggingCard = ref(false);
+const isMovingCard = ref(false);
 let kanbanPollingInterval = null;
 let commentsPollingInterval = null;
 
 const syncSpaceData = async () => {
-    // Avoid syncing while user is dragging a card or actively typing a new quick task
-    if (isDraggingCard.value || isSubmittingTask.value || activeQuickAddStageId.value) return;
+    // Avoid syncing while user is dragging a card, moving a card, or actively typing a new quick task
+    if (isDraggingCard.value || isMovingCard.value || isSubmittingTask.value || activeQuickAddStageId.value) return;
 
     try {
         const res = await fetch(`/spaces/${props.space.slug}/sync`, {
@@ -804,7 +933,7 @@ const syncSpaceData = async () => {
                 if (newJson !== oldJson) {
                     localSpace.value.lists = data.space.lists;
 
-                    // If task modal is open, sync comments, checklists, and attachments
+                    // If task modal is open, sync comments, checklists, attachments, and dependencies
                     if (selectedTask.value) {
                         for (const list of data.space.lists) {
                             for (const stage of list.stages || []) {
@@ -818,6 +947,13 @@ const syncSpaceData = async () => {
                                     }
                                     if (JSON.stringify(found.attachments) !== JSON.stringify(selectedTask.value.attachments)) {
                                         selectedTask.value.attachments = found.attachments || [];
+                                    }
+                                    if (JSON.stringify(found.dependencies) !== JSON.stringify(selectedTask.value.dependencies)) {
+                                        selectedTask.value.dependencies = found.dependencies || [];
+                                        taskDependencyIds.value = (found.dependencies || []).map((d) => d.id);
+                                    }
+                                    if (JSON.stringify(found.dependents) !== JSON.stringify(selectedTask.value.dependents)) {
+                                        selectedTask.value.dependents = found.dependents || [];
                                     }
                                 }
                             }
@@ -867,6 +1003,7 @@ const initSortable = () => {
     columnElements.forEach((colEl) => {
         const sortable = new Sortable(colEl, {
             group: 'kanban-tasks',
+            disabled: isViewer.value,
             animation: 200,
             ghostClass: 'kanban-ghost-card',
             chosenClass: 'kanban-chosen-card',
@@ -878,12 +1015,59 @@ const initSortable = () => {
             onEnd: async (evt) => {
                 isDraggingCard.value = false;
                 const taskId = evt.item.dataset.taskId;
+                const fromStageId = evt.from.dataset.stageId;
                 const newStageId = evt.to.dataset.stageId;
                 const newPosition = evt.newIndex + 1;
 
-                if (!taskId || !newStageId) return;
+                if (!taskId || !newStageId || !fromStageId) return;
+                if (fromStageId === newStageId && evt.oldIndex === evt.newIndex) return;
 
-                // Send AJAX request in background (Optimistic update)
+                const taskIdNum = parseInt(taskId);
+                const sourceStageIdNum = parseInt(fromStageId);
+                const targetStageIdNum = parseInt(newStageId);
+
+                // Snapshot backup for revert on failure
+                const backupLists = JSON.parse(JSON.stringify(localSpace.value.lists || []));
+
+                // Optimistic state update in localSpace.value immediately
+                let sourceStage = null;
+                let targetStage = null;
+                for (const list of localSpace.value.lists || []) {
+                    for (const stg of list.stages || []) {
+                        if (stg.id === sourceStageIdNum) sourceStage = stg;
+                        if (stg.id === targetStageIdNum) targetStage = stg;
+                    }
+                }
+
+                if (sourceStage && targetStage) {
+                    const taskIdx = (sourceStage.tasks || []).findIndex((t) => t.id === taskIdNum);
+                    if (taskIdx > -1) {
+                        const [movedTask] = sourceStage.tasks.splice(taskIdx, 1);
+                        movedTask.stage_id = targetStageIdNum;
+                        if (sourceStage.id !== targetStage.id) {
+                            movedTask.stage = {
+                                id: targetStage.id,
+                                name: targetStage.name,
+                                color: targetStage.color,
+                                is_done: targetStage.is_done,
+                            };
+                        }
+                        if (!targetStage.tasks) targetStage.tasks = [];
+                        targetStage.tasks.splice(evt.newIndex, 0, movedTask);
+
+                        // Recalculate/normalize positions
+                        sourceStage.tasks.forEach((t, idx) => {
+                            t.position = idx + 1;
+                        });
+                        if (sourceStage.id !== targetStage.id) {
+                            targetStage.tasks.forEach((t, idx) => {
+                                t.position = idx + 1;
+                            });
+                        }
+                    }
+                }
+
+                isMovingCard.value = true;
                 try {
                     const response = await fetch(`/tasks/${taskId}/move`, {
                         method: 'POST',
@@ -893,18 +1077,27 @@ const initSortable = () => {
                             Accept: 'application/json',
                         },
                         body: JSON.stringify({
-                            stage_id: parseInt(newStageId),
+                            stage_id: targetStageIdNum,
                             position: newPosition,
                         }),
                     });
 
                     if (!response.ok) {
-                        console.error('Gagal memindahkan task');
-                        router.reload({ only: ['space'] });
+                        localSpace.value.lists = backupLists;
+                        showToast('Gagal memindahkan task. Perubahan dibatalkan.', 'error');
+                        nextTick(() => {
+                            initSortable();
+                        });
                     }
                 } catch (err) {
                     console.error('Koneksi terputus saat memindahkan task', err);
-                    router.reload({ only: ['space'] });
+                    localSpace.value.lists = backupLists;
+                    showToast('Koneksi terputus saat memindahkan task. Perubahan dibatalkan.', 'error');
+                    nextTick(() => {
+                        initSortable();
+                    });
+                } finally {
+                    isMovingCard.value = false;
                 }
             },
         });
@@ -928,7 +1121,7 @@ onUnmounted(() => {
 watch(
     () => localSpace.value,
     () => {
-        if (!isDraggingCard.value) {
+        if (!isDraggingCard.value && !isMovingCard.value) {
             nextTick(() => {
                 initSortable();
             });
@@ -938,6 +1131,12 @@ watch(
 );
 
 watch(selectedListId, () => {
+    nextTick(() => {
+        initSortable();
+    });
+});
+
+watch(isViewer, () => {
     nextTick(() => {
         initSortable();
     });
@@ -953,8 +1152,24 @@ const listStageFilter = ref('all');
 const allCurrentTasks = computed(() => {
     if (!currentList.value?.stages) return [];
     return currentList.value.stages.flatMap((stg) =>
-        (stg.tasks || []).map((t) => ({ ...t, stage_name: stg.name, stage_color: stg.color }))
+        (stg.tasks || []).map((t) => ({
+            ...t,
+            stage_name: stg.name,
+            stage_color: stg.color,
+            stage: stg,
+        }))
     );
+});
+
+const availablePrerequisiteTasks = computed(() => {
+    if (!selectedTask.value) return [];
+    return allCurrentTasks.value.filter((t) => {
+        if (t.id === selectedTask.value.id) return false;
+        if (taskDependencyIds.value.includes(t.id)) return false;
+        const isDependent = (selectedTask.value.dependents || []).some((dep) => dep.id === t.id);
+        if (isDependent) return false;
+        return true;
+    });
 });
 
 const filteredTasks = computed(() => {
@@ -1066,7 +1281,7 @@ const filteredTasks = computed(() => {
                             <i class="ri-information-line me-1"></i> Ringkasan & Anggota
                         </button>
                     </li>
-                    <li class="nav-item">
+                    <li v-if="!isViewer" class="nav-item">
                         <button
                             type="button"
                             class="nav-link py-2 px-3 fw-semibold fs-13 border-0"
@@ -1115,7 +1330,7 @@ const filteredTasks = computed(() => {
                                 {{ stage.tasks?.length || 0 }}
                             </span>
                         </div>
-                        <div class="d-flex align-items-center gap-1">
+                        <div v-if="!isViewer" class="d-flex align-items-center gap-1">
                             <button
                                 type="button"
                                 class="btn btn-sm btn-light p-1 rounded-circle text-muted"
@@ -1207,10 +1422,21 @@ const filteredTasks = computed(() => {
                             @click="openTaskModal(task)"
                         >
                             <div class="d-flex justify-content-between align-items-start mb-2">
-                                <span class="badge rounded-pill px-2 py-1 fs-10 text-uppercase" :class="priorityColor(task.priority)">
-                                    {{ task.priority }}
-                                </span>
-                                <div class="dropdown" @click.stop>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span class="badge rounded-pill px-2 py-1 fs-10 text-uppercase" :class="priorityColor(task.priority)">
+                                        {{ task.priority }}
+                                    </span>
+                                    <!-- Dependency Link Badge -->
+                                    <span
+                                        v-if="task.dependencies?.length"
+                                        class="badge bg-secondary-subtle text-secondary rounded-pill px-1-5 py-0 fs-10 d-inline-flex align-items-center gap-1"
+                                        :title="`Bergantung pada ${task.dependencies.length} tugas lain`"
+                                    >
+                                        <i class="ri-links-line"></i>
+                                        <span>{{ task.dependencies.length }}</span>
+                                    </span>
+                                </div>
+                                <div v-if="!isViewer" class="dropdown" @click.stop>
                                     <button class="btn btn-sm btn-link text-muted p-0 border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                                         <i class="ri-more-line"></i>
                                     </button>
@@ -1221,8 +1447,8 @@ const filteredTasks = computed(() => {
                                                 <span>Detail Task</span>
                                             </button>
                                         </li>
-                                        <li><hr class="dropdown-divider my-1"></li>
-                                        <li>
+                                        <li v-if="!isViewer"><hr class="dropdown-divider my-1"></li>
+                                        <li v-if="!isViewer">
                                             <button @click="deleteTask(task)" type="button" class="dropdown-item text-danger d-flex align-items-center gap-2 py-1">
                                                 <i class="ri-delete-bin-line"></i>
                                                 <span>Hapus Task</span>
@@ -1278,7 +1504,7 @@ const filteredTasks = computed(() => {
 
                         <!-- Add Task Link Button at Bottom of Column -->
                         <button
-                            v-if="activeQuickAddStageId !== stage.id"
+                            v-if="!isViewer && activeQuickAddStageId !== stage.id"
                             type="button"
                             class="btn btn-sm btn-light border-dashed w-100 text-muted fs-12 mt-1 py-1"
                             @click="openQuickAdd(stage.id)"
@@ -1370,7 +1596,7 @@ const filteredTasks = computed(() => {
                 </template>
 
                 <!-- ADD NEW STAGE / STATUS COLUMN AT THE END -->
-                <div style="width: 295px; min-width: 295px;">
+                <div v-if="!isViewer" style="width: 295px; min-width: 295px;">
                     <!-- Add Column Trigger Button -->
                     <div
                         v-if="!isAddingStage || insertAfterStageId !== null"
@@ -1514,6 +1740,7 @@ const filteredTasks = computed(() => {
                         Menampilkan {{ filteredTasks.length }} dari {{ allCurrentTasks.length }} Task
                     </span>
                     <button
+                        v-if="!isViewer"
                         type="button"
                         class="btn btn-sm btn-primary rounded-pill px-3 fw-semibold fs-12"
                         @click="openQuickAdd(currentList?.stages?.[0]?.id)"
@@ -1546,7 +1773,16 @@ const filteredTasks = computed(() => {
                             @click="openTaskModal(task)"
                         >
                             <td class="ps-4">
-                                <div class="fw-semibold fs-13 text-body">{{ task.title }}</div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="fw-semibold fs-13 text-body">{{ task.title }}</span>
+                                    <span
+                                        v-if="task.dependencies?.length"
+                                        class="badge bg-secondary-subtle text-secondary rounded-pill px-1-5 py-0 fs-10"
+                                        :title="`Bergantung pada ${task.dependencies.length} tugas lain`"
+                                    >
+                                        <i class="ri-links-line me-1"></i>{{ task.dependencies.length }}
+                                    </span>
+                                </div>
                                 <div v-if="task.description" class="fs-11 text-muted text-truncate" style="max-width: 280px;">
                                     {{ task.description }}
                                 </div>
@@ -1621,8 +1857,8 @@ const filteredTasks = computed(() => {
                                                 <span>Detail Task</span>
                                             </button>
                                         </li>
-                                        <li><hr class="dropdown-divider my-1"></li>
-                                        <li>
+                                        <li v-if="!isViewer"><hr class="dropdown-divider my-1"></li>
+                                        <li v-if="!isViewer">
                                             <button @click="deleteTask(task)" type="button" class="dropdown-item text-danger d-flex align-items-center gap-2 py-1">
                                                 <i class="ri-delete-bin-line"></i>
                                                 <span>Hapus Task</span>
@@ -1648,7 +1884,9 @@ const filteredTasks = computed(() => {
             <GanttTimeline
                 :tasks="allCurrentTasks"
                 :stages="currentList?.stages || []"
+                :read-only="isViewer"
                 @open-task="openTaskModal"
+                @update-task-dates="handleUpdateTaskDates"
             />
         </div>
 
@@ -1662,7 +1900,7 @@ const filteredTasks = computed(() => {
             </div>
 
             <!-- Form Tambah Anggota ke Space -->
-            <div class="card border border-secondary-subtle rounded-3 p-3 mb-4 bg-light-subtle">
+            <div v-if="!isViewer" class="card border border-secondary-subtle rounded-3 p-3 mb-4 bg-light-subtle">
                 <h6 class="fw-bold fs-13 mb-2 d-flex align-items-center gap-1">
                     <i class="ri-user-add-line text-primary"></i> Tambahkan Anggota Workspace ke Space Ini
                 </h6>
@@ -1787,6 +2025,7 @@ const filteredTasks = computed(() => {
                             </div>
                         </div>
                         <button
+                            v-if="!isViewer"
                             type="button"
                             class="btn btn-sm btn-link text-danger p-1 border-0 flex-shrink-0"
                             title="Keluarkan dari Space"
@@ -1800,7 +2039,7 @@ const filteredTasks = computed(() => {
         </div>
 
         <!-- TAB 3: SETTINGS -->
-        <div v-else-if="activeTab === 'settings'" class="card border border-secondary-subtle rounded-3 p-4 shadow-sm" style="max-width: 600px;">
+        <div v-else-if="activeTab === 'settings' && !isViewer" class="card border border-secondary-subtle rounded-3 p-4 shadow-sm" style="max-width: 600px;">
             <h5 class="fw-bold mb-3 fs-16">Pengaturan Space</h5>
             <form @submit.prevent="updateSpace">
                 <div class="mb-3">
@@ -1876,6 +2115,8 @@ const filteredTasks = computed(() => {
                                 type="text"
                                 class="form-control form-control-lg border-0 bg-transparent fw-bold fs-16 p-0 text-body"
                                 placeholder="Judul task..."
+                                :readonly="isViewer"
+                                :disabled="isViewer"
                                 @blur="saveTaskDetails"
                             />
                         </div>
@@ -1884,6 +2125,12 @@ const filteredTasks = computed(() => {
 
                     <!-- Modal Body (Two-column layout) -->
                     <div class="modal-body p-4">
+                        <!-- Viewer Read-Only Notice -->
+                        <div v-if="isViewer" class="alert alert-info py-2 px-3 fs-12 mb-3 d-flex align-items-center gap-2 rounded-3 border-0 bg-info-subtle text-info-emphasis">
+                            <i class="ri-eye-line fs-16"></i>
+                            <span>Anda sedang membuka task ini dalam mode <strong>Viewer (Hanya Baca)</strong>. Anda dapat melihat seluruh rincian dan mengirim pesan di tab <strong>Diskusi & Log</strong>.</span>
+                        </div>
+
                         <div class="row g-4">
                             <!-- Left Column: Description, Checklists, Attachments, Comments -->
                             <div class="col-lg-8">
@@ -1926,6 +2173,8 @@ const filteredTasks = computed(() => {
                                             class="form-control rounded-3 fs-13"
                                             rows="4"
                                             placeholder="Tambahkan rincian instruksi, catatan kriteria selesai, atau link dokumen..."
+                                            :readonly="isViewer"
+                                            :disabled="isViewer"
                                             @blur="saveTaskDetails"
                                         ></textarea>
                                     </div>
@@ -1962,6 +2211,7 @@ const filteredTasks = computed(() => {
                                                         type="checkbox"
                                                         class="form-check-input mt-0 cursor-pointer"
                                                         :checked="chk.is_completed"
+                                                        :disabled="isViewer"
                                                         @change="toggleChecklist(chk)"
                                                     />
                                                     <span
@@ -1972,6 +2222,7 @@ const filteredTasks = computed(() => {
                                                     </span>
                                                 </div>
                                                 <button
+                                                    v-if="!isViewer"
                                                     type="button"
                                                     class="btn btn-sm btn-link text-danger p-0 border-0"
                                                     title="Hapus checklist item"
@@ -1983,7 +2234,7 @@ const filteredTasks = computed(() => {
                                         </div>
 
                                         <!-- Add New Checklist Item Form -->
-                                        <form @submit.prevent="addChecklist" class="d-flex gap-2">
+                                        <form v-if="!isViewer" @submit.prevent="addChecklist" class="d-flex gap-2">
                                             <input
                                                 v-model="newChecklistTitle"
                                                 type="text"
@@ -2001,6 +2252,116 @@ const filteredTasks = computed(() => {
                                         </form>
                                     </div>
 
+                                    <!-- Dependensi Tugas (Task Dependencies) Subsystem -->
+                                    <div class="mb-4">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <label class="form-label fs-13 fw-bold text-muted text-uppercase mb-0">
+                                                <i class="ri-links-line me-1"></i> Dependensi Tugas
+                                            </label>
+                                            <span class="fs-12 text-muted fw-semibold">
+                                                {{ (selectedTask?.dependencies?.length || 0) + (selectedTask?.dependents?.length || 0) }} Kaitan
+                                            </span>
+                                        </div>
+
+                                        <!-- 1. Prerequisite Tasks (Task ini bergantung pada...) -->
+                                        <div class="card border rounded-3 p-3 mb-3 bg-light-subtle">
+                                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                                <span class="fs-12 fw-bold text-body d-flex align-items-center gap-1">
+                                                    <i class="ri-arrow-left-line text-warning"></i> Tugas Prasyarat (Harus selesai sebelum task ini)
+                                                </span>
+                                                <span class="badge bg-secondary-subtle text-secondary rounded-pill fs-11">
+                                                    {{ selectedTask?.dependencies?.length || 0 }}
+                                                </span>
+                                            </div>
+
+                                            <!-- List of Prerequisites -->
+                                            <div v-if="selectedTask?.dependencies?.length" class="d-flex flex-column gap-2 mb-2">
+                                                <div
+                                                    v-for="dep in selectedTask.dependencies"
+                                                    :key="dep.id"
+                                                    class="d-flex align-items-center justify-content-between p-2 rounded-2 border bg-body"
+                                                >
+                                                    <div class="d-flex align-items-center gap-2 overflow-hidden flex-grow-1">
+                                                        <span class="badge rounded-pill px-2 py-0 fs-10 text-uppercase" :class="priorityColor(dep.priority)">
+                                                            {{ dep.priority }}
+                                                        </span>
+                                                        <span class="fs-13 fw-semibold text-body text-truncate cursor-pointer hover-text-primary" @click="openTaskModal(dep)" :title="dep.title">
+                                                            {{ dep.title }}
+                                                        </span>
+                                                        <span v-if="dep.due_at" class="fs-11 text-muted text-nowrap ms-auto me-2">
+                                                            <i class="ri-calendar-event-line me-1"></i>Tenggat: {{ formatDateShort(dep.due_at) }}
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        v-if="!isViewer"
+                                                        type="button"
+                                                        class="btn btn-sm btn-link text-danger p-0 border-0 flex-shrink-0"
+                                                        title="Hapus dependensi prasyarat"
+                                                        @click="removeDependency(dep.id)"
+                                                    >
+                                                        <i class="ri-close-line fs-16"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div v-else class="text-muted fs-12 py-1 mb-2">
+                                                Belum ada tugas prasyarat. Task ini dapat dikerjakan secara mandiri.
+                                            </div>
+
+                                            <!-- Add Prerequisite Dropdown (if not viewer) -->
+                                            <div v-if="!isViewer && availablePrerequisiteTasks.length > 0" class="d-flex gap-2 align-items-center mt-2 pt-2 border-top">
+                                                <select v-model="selectedPrerequisiteTaskId" class="form-select form-select-sm rounded-pill fs-12 flex-grow-1">
+                                                    <option value="">+ Pilih tugas prasyarat dari Space ini...</option>
+                                                    <option v-for="t in availablePrerequisiteTasks" :key="t.id" :value="t.id">
+                                                        {{ t.title }} ({{ t.stage_name || t.stage?.name || 'Status' }})
+                                                    </option>
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm btn-primary rounded-pill px-3 fs-12 fw-semibold text-nowrap"
+                                                    :disabled="!selectedPrerequisiteTaskId"
+                                                    @click="addDependency(selectedPrerequisiteTaskId)"
+                                                >
+                                                    <i class="ri-add-line me-1"></i> Tambah
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- 2. Dependent Tasks (Tugas yang bergantung pada tugas ini) -->
+                                        <div class="card border rounded-3 p-3 bg-light-subtle">
+                                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                                <span class="fs-12 fw-bold text-body d-flex align-items-center gap-1">
+                                                    <i class="ri-arrow-right-line text-info"></i> Tugas yang Bergantung (Menunggu task ini selesai)
+                                                </span>
+                                                <span class="badge bg-secondary-subtle text-secondary rounded-pill fs-11">
+                                                    {{ selectedTask?.dependents?.length || 0 }}
+                                                </span>
+                                            </div>
+
+                                            <div v-if="selectedTask?.dependents?.length" class="d-flex flex-column gap-2">
+                                                <div
+                                                    v-for="dep in selectedTask.dependents"
+                                                    :key="dep.id"
+                                                    class="d-flex align-items-center justify-content-between p-2 rounded-2 border bg-body"
+                                                >
+                                                    <div class="d-flex align-items-center gap-2 overflow-hidden flex-grow-1">
+                                                        <span class="badge rounded-pill px-2 py-0 fs-10 text-uppercase" :class="priorityColor(dep.priority)">
+                                                            {{ dep.priority }}
+                                                        </span>
+                                                        <span class="fs-13 fw-semibold text-body text-truncate cursor-pointer hover-text-primary" @click="openTaskModal(dep)" :title="dep.title">
+                                                            {{ dep.title }}
+                                                        </span>
+                                                        <span v-if="dep.start_date" class="fs-11 text-muted text-nowrap ms-auto">
+                                                            <i class="ri-calendar-line me-1"></i>Mulai: {{ formatDateShort(dep.start_date) }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div v-else class="text-muted fs-12 py-1">
+                                                Tidak ada tugas lain yang menunggu penyelesaian task ini.
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <!-- Attachments Subsystem -->
                                     <div class="mb-4">
                                         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -2008,6 +2369,7 @@ const filteredTasks = computed(() => {
                                                 <i class="ri-attachment-2 me-1"></i> Lampiran Berkas
                                             </label>
                                             <button
+                                                v-if="!isViewer"
                                                 type="button"
                                                 class="btn btn-sm btn-light border rounded-pill px-3 fs-12 fw-semibold"
                                                 :disabled="isUploadingAttachment"
@@ -2091,6 +2453,7 @@ const filteredTasks = computed(() => {
                                                             <i class="ri-download-2-line fs-14"></i>
                                                         </button>
                                                         <button
+                                                            v-if="!isViewer"
                                                             type="button"
                                                             class="btn btn-sm btn-light p-1 rounded-circle text-danger"
                                                             title="Hapus Berkas"
@@ -2150,6 +2513,7 @@ const filteredTasks = computed(() => {
                                                         <span class="fs-11 text-muted">{{ formatDateTime(com.created_at) }}</span>
                                                     </div>
                                                     <button
+                                                        v-if="com.user_id === currentUser?.id || currentUser?.is_super_admin"
                                                         type="button"
                                                         class="btn btn-sm btn-link text-danger p-0 border-0"
                                                         title="Hapus komentar"
@@ -2210,6 +2574,7 @@ const filteredTasks = computed(() => {
                                         <select
                                             v-model="taskStageId"
                                             class="form-select form-select-sm rounded-2"
+                                            :disabled="isViewer"
                                             @change="saveTaskDetails"
                                         >
                                             <option v-for="stg in currentList?.stages" :key="stg.id" :value="stg.id">
@@ -2224,6 +2589,7 @@ const filteredTasks = computed(() => {
                                         <select
                                             v-model="taskPriority"
                                             class="form-select form-select-sm rounded-2"
+                                            :disabled="isViewer"
                                             @change="saveTaskDetails"
                                         >
                                             <option value="low">🟢 Low</option>
@@ -2241,6 +2607,7 @@ const filteredTasks = computed(() => {
                                                 v-model="taskStartDate"
                                                 type="date"
                                                 class="form-control form-control-sm rounded-2"
+                                                :disabled="isViewer"
                                                 @change="saveTaskDetails"
                                             />
                                         </div>
@@ -2250,6 +2617,7 @@ const filteredTasks = computed(() => {
                                                 v-model="taskDueAt"
                                                 type="date"
                                                 class="form-control form-control-sm rounded-2"
+                                                :disabled="isViewer"
                                                 @change="saveTaskDetails"
                                             />
                                         </div>
@@ -2264,6 +2632,7 @@ const filteredTasks = computed(() => {
                                             min="0"
                                             class="form-control form-control-sm rounded-2"
                                             placeholder="Contoh: 120"
+                                            :disabled="isViewer"
                                             @blur="saveTaskDetails"
                                         />
                                     </div>
@@ -2279,9 +2648,13 @@ const filteredTasks = computed(() => {
 
                                         <!-- Select2-style Box Container -->
                                         <div
-                                            class="form-control form-control-sm p-1 d-flex flex-wrap align-items-center gap-1 cursor-pointer bg-light-subtle rounded-2 min-h-38"
-                                            :class="{ 'border-primary shadow-xs': isAssigneeDropdownOpen }"
-                                            @click="isAssigneeDropdownOpen = !isAssigneeDropdownOpen"
+                                            class="form-control form-control-sm p-1 d-flex flex-wrap align-items-center gap-1 bg-light-subtle rounded-2 min-h-38"
+                                            :class="{
+                                                'border-primary shadow-xs': isAssigneeDropdownOpen,
+                                                'cursor-pointer': !isViewer,
+                                                'opacity-75 bg-light cursor-not-allowed': isViewer
+                                            }"
+                                            @click="!isViewer && (isAssigneeDropdownOpen = !isAssigneeDropdownOpen)"
                                         >
                                             <!-- Selected Assignee Badges/Pills -->
                                             <span
@@ -2298,6 +2671,7 @@ const filteredTasks = computed(() => {
                                                 </span>
                                                 <span class="text-truncate" style="max-width: 110px;">{{ member.name }}</span>
                                                 <i
+                                                    v-if="!isViewer"
                                                     class="ri-close-line cursor-pointer fs-12 text-muted hover-text-danger"
                                                     title="Hapus penanggung jawab"
                                                     @click.stop="removeAssignee(member.id)"
@@ -2313,14 +2687,14 @@ const filteredTasks = computed(() => {
                                             </span>
 
                                             <!-- Caret Indicator -->
-                                            <div class="ms-auto pe-2 text-muted">
+                                            <div v-if="!isViewer" class="ms-auto pe-2 text-muted">
                                                 <i :class="isAssigneeDropdownOpen ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i>
                                             </div>
                                         </div>
 
                                         <!-- Select2 Dropdown Menu -->
                                         <div
-                                            v-if="isAssigneeDropdownOpen"
+                                            v-if="isAssigneeDropdownOpen && !isViewer"
                                             class="card position-absolute w-100 mt-1 border shadow-lg rounded-3 p-2 bg-body"
                                             style="z-index: 1070; max-height: 260px;"
                                             @click.stop
@@ -2403,7 +2777,7 @@ const filteredTasks = computed(() => {
                                     <hr class="my-2" />
 
                                     <!-- Action Buttons -->
-                                    <div class="d-flex flex-column gap-2">
+                                    <div v-if="!isViewer" class="d-flex flex-column gap-2">
                                         <button
                                             type="button"
                                             class="btn btn-primary rounded-pill w-100 fw-semibold fs-13 py-2"

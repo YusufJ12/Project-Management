@@ -7,6 +7,7 @@ use App\Models\TaskList;
 use App\Models\TaskStage;
 use App\Models\User;
 use App\Models\Workspace;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -213,15 +214,23 @@ class SpaceController extends Controller
             'lists.stages.tasks.comments.user:id,name,email',
             'lists.stages.tasks.attachments.uploader:id,name,email',
             'lists.stages.tasks.creator:id,name,email',
+            'lists.stages.tasks.dependencies:id,title,start_date,due_at',
+            'lists.stages.tasks.dependents:id,title',
         ]);
 
         $workspaceMembers = $workspace->members()
             ->select('users.id', 'users.name', 'users.email', 'users.username')
             ->get();
 
+        $effectiveRole = $user->getEffectiveRoleInSpace($space);
+        $canEditTasks = $effectiveRole !== 'viewer';
+
         return Inertia::render('Spaces/Show', [
             'space' => $space,
             'workspaceMembers' => $workspaceMembers,
+            'userRole' => $effectiveRole,
+            'effectiveRole' => $effectiveRole,
+            'can_edit_tasks' => $canEditTasks,
         ]);
     }
 
@@ -247,10 +256,18 @@ class SpaceController extends Controller
             'lists.stages.tasks.comments.user:id,name,email',
             'lists.stages.tasks.attachments.uploader:id,name,email',
             'lists.stages.tasks.creator:id,name,email',
+            'lists.stages.tasks.dependencies:id,title,start_date,due_at',
+            'lists.stages.tasks.dependents:id,title',
         ]);
+
+        $effectiveRole = $user->getEffectiveRoleInSpace($space);
+        $canEditTasks = $effectiveRole !== 'viewer';
 
         return response()->json([
             'space' => $space,
+            'userRole' => $effectiveRole,
+            'effectiveRole' => $effectiveRole,
+            'can_edit_tasks' => $canEditTasks,
         ]);
     }
 

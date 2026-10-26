@@ -18,7 +18,11 @@ class TaskCommentController extends Controller
         $task->load('list.space');
         $space = $task->list->space;
 
-        if (! $user->isSuperAdmin() && ! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+        $hasAccess = $user->isSuperAdmin() ||
+            $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists() ||
+            $space->members()->where('users.id', $user->id)->exists();
+
+        if (! $hasAccess) {
             return response()->json(['error' => 'Akses ditolak.'], 403);
         }
 
@@ -42,7 +46,11 @@ class TaskCommentController extends Controller
         $task->load('list.space');
         $space = $task->list->space;
 
-        if (! $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists()) {
+        $hasAccess = $user->isSuperAdmin() ||
+            $user->workspaces()->where('workspaces.id', $space->workspace_id)->exists() ||
+            $space->members()->where('users.id', $user->id)->exists();
+
+        if (! $hasAccess) {
             if ($request->wantsJson()) {
                 return response()->json(['error' => 'Akses ditolak.'], 403);
             }

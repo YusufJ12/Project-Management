@@ -31,6 +31,13 @@ class TaskAttachmentController extends Controller
             return back()->with('error', 'Akses ditolak.');
         }
 
+        if ($user->isViewerInSpace($space)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
+            }
+            return back()->with('error', 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.');
+        }
+
         $file = $request->file('file');
         $originalName = $file->getClientOriginalName();
         $sizeBytes = $file->getSize();
@@ -108,6 +115,13 @@ class TaskAttachmentController extends Controller
                 return response()->json(['error' => 'Akses ditolak.'], 403);
             }
             return back()->with('error', 'Akses ditolak.');
+        }
+
+        if ($user->isViewerInSpace($space)) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.'], 403);
+            }
+            return back()->with('error', 'Peran Viewer hanya memiliki hak akses untuk melihat dan berdiskusi.');
         }
 
         $fileName = $attachment->original_name;
