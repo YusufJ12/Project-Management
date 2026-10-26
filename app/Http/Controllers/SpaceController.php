@@ -7,6 +7,7 @@ use App\Models\TaskList;
 use App\Models\TaskStage;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -307,6 +308,22 @@ class SpaceController extends Controller
                 ],
             ]);
         }
+
+        NotificationService::sendToMany(
+            $validated['user_ids'],
+            $space->workspace_id,
+            'space_member_added',
+            [
+                'title' => 'Proyek / Space Baru',
+                'message' => "Anda telah ditambahkan ke proyek \"{$space->name}\" sebagai " . ucfirst($role),
+                'actor_name' => $user->name,
+                'actor_avatar' => $user->avatar_path ?? null,
+                'url' => route('spaces.show', ['space' => $space->slug]),
+                'space_id' => $space->id,
+                'space_slug' => $space->slug,
+            ],
+            $user->id
+        );
 
         return back()->with('success', 'Anggota berhasil ditambahkan ke Space ini!');
     }

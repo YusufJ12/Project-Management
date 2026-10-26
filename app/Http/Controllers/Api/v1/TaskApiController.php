@@ -348,6 +348,30 @@ class TaskApiController extends Controller
             TaskNotificationService::notifyTaskCompleted($task, $user);
         }
 
+        $existingRecipientIds = $task->assignees()->pluck('users.id')->all();
+        if ($task->creator_id) {
+            $existingRecipientIds[] = (int) $task->creator_id;
+        }
+        if (! empty($newlyAssignedIds)) {
+            $existingRecipientIds = array_diff($existingRecipientIds, $newlyAssignedIds);
+        }
+
+        NotificationService::sendToMany(
+            array_unique($existingRecipientIds),
+            $space->workspace_id,
+            'task_updated',
+            [
+                'title' => "Tugas Diperbarui: {$task->title}",
+                'message' => "{$user->name} memperbarui rincian tugas",
+                'actor_name' => $user->name,
+                'actor_avatar' => $user->avatar_path ?? null,
+                'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}&tab=details",
+                'task_id' => $task->id,
+                'space_slug' => $space->slug,
+            ],
+            $user->id
+        );
+
         $task->load(['stage', 'assignees', 'checklists', 'attachments', 'dependencies.stage']);
 
         DB::afterCommit(function () use ($task, $user, $space, $cascadedTasks) {
@@ -601,6 +625,30 @@ class TaskApiController extends Controller
 
         $checklistsCount = $task->checklists()->count();
         $completedChecklistsCount = $task->checklists()->where('is_completed', true)->count();
+
+        $recipientIds = $task->assignees()->pluck('users.id')->all();
+        if ($task->creator_id) {
+            $recipientIds[] = (int) $task->creator_id;
+        }
+        if (empty($recipientIds)) {
+            $recipientIds = $space->members()->wherePivot('role', 'manager')->pluck('users.id')->all();
+        }
+
+        NotificationService::sendToMany(
+            array_unique($recipientIds),
+            $space->workspace_id,
+            'checklist_toggled',
+            [
+                'title' => "Checklist: {$task->title}",
+                'message' => "{$user->name} " . ($newStatus ? 'menyelesaikan' : 'membuka kembali') . " checklist \"{$checklist->title}\"",
+                'actor_name' => $user->name,
+                'actor_avatar' => $user->avatar_path ?? null,
+                'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}&tab=details",
+                'task_id' => $task->id,
+                'space_slug' => $space->slug,
+            ],
+            $user->id
+        );
 
         DB::afterCommit(function () use ($space, $task, $checklist, $newStatus, $checklistsCount, $completedChecklistsCount, $user) {
             try {

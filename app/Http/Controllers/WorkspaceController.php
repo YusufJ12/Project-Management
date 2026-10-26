@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActivityLog;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\NotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -233,6 +234,20 @@ class WorkspaceController extends Controller
                 'role' => $validated['role'],
             ],
         ]);
+
+        NotificationService::send(
+            $targetUser->id,
+            $workspace->id,
+            'workspace_member_added',
+            [
+                'title' => 'Ruang Kerja Baru',
+                'message' => "Anda telah ditambahkan ke workspace \"{$workspace->name}\" sebagai " . ucfirst($validated['role']),
+                'actor_name' => $currentUser->name,
+                'actor_avatar' => $currentUser->avatar_path ?? null,
+                'url' => route('workspaces.index'),
+                'workspace_id' => $workspace->id,
+            ]
+        );
 
         return back()->with('success', "Pengguna {$targetUser->name} berhasil ditambahkan ke workspace '{$workspace->name}'!");
     }

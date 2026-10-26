@@ -476,6 +476,30 @@ class TaskController extends Controller
             ],
         ]);
 
+        $existingRecipientIds = $task->assignees()->pluck('users.id')->all();
+        if ($task->creator_id) {
+            $existingRecipientIds[] = (int) $task->creator_id;
+        }
+        if (! empty($newlyAssignedIds)) {
+            $existingRecipientIds = array_diff($existingRecipientIds, $newlyAssignedIds);
+        }
+
+        NotificationService::sendToMany(
+            array_unique($existingRecipientIds),
+            $space->workspace_id,
+            'task_updated',
+            [
+                'title' => "Tugas Diperbarui: {$task->title}",
+                'message' => "{$user->name} memperbarui rincian tugas",
+                'actor_name' => $user->name,
+                'actor_avatar' => $user->avatar_path ?? null,
+                'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}&tab=details",
+                'task_id' => $task->id,
+                'space_slug' => $space->slug,
+            ],
+            $user->id
+        );
+
         $task->load([
             'stage',
             'assignees:id,name,email',

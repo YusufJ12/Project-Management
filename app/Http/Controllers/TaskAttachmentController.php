@@ -7,6 +7,7 @@ use App\Events\TaskAttachmentUploadedEvent;
 use App\Models\ActivityLog;
 use App\Models\Task;
 use App\Models\TaskAttachment;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -140,6 +141,30 @@ class TaskAttachmentController extends Controller
         ]);
 
         $attachment->load('uploader:id,name,email');
+
+        $recipientIds = $task->assignees()->pluck('users.id')->all();
+        if ($task->creator_id) {
+            $recipientIds[] = (int) $task->creator_id;
+        }
+        if (empty($recipientIds)) {
+            $recipientIds = $space->members()->wherePivot('role', 'manager')->pluck('users.id')->all();
+        }
+
+        NotificationService::sendToMany(
+            array_unique($recipientIds),
+            $space->workspace_id,
+            'attachment_uploaded',
+            [
+                'title' => "Berkas Diunggah: {$task->title}",
+                'message' => "{$user->name} mengunggah berkas \"{$sanitizedOriginalName}\"",
+                'actor_name' => $user->name,
+                'actor_avatar' => $user->avatar_path ?? null,
+                'url' => route('spaces.show', ['space' => $space->slug]) . "?task_id={$task->id}&tab=attachments",
+                'task_id' => $task->id,
+                'space_slug' => $space->slug,
+            ],
+            $user->id
+        );
 
         DB::afterCommit(function () use ($space, $task, $attachment) {
             try {
