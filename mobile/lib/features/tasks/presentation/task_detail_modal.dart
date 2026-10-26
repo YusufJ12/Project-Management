@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../auth/models/user_model.dart';
@@ -563,92 +563,91 @@ class _TaskDetailModalState extends State<TaskDetailModal>
   }
 
   void _showUploadDialog() {
-    final fileNameCtrl = TextEditingController(text: 'catatan_proyek.txt');
-    final contentCtrl = TextEditingController();
+    _pickAndUploadFile();
+  }
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Unggah Berkas / Dokumen'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Masukkan nama dan isi berkas teks untuk disimpan ke task ini:',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: fileNameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Nama Berkas',
-                hintText: 'misal: spek_desain.txt',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: contentCtrl,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Isi Dokumen / Teks',
-                hintText: 'Tulis ringkasan atau catatan berkas...',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal'),
+  Future<void> _pickAndUploadFile() async {
+    if (_isUploadingAttachment) return;
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'docx', 'xlsx', 'txt', 'zip'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final pickedFile = result.files.first;
+      final fName = pickedFile.name;
+      final bytes = pickedFile.bytes;
+      final path = pickedFile.path;
+
+      setState(() => _isUploadingAttachment = true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Mengunggah $fName dari penyimpanan...'),
+            duration: const Duration(seconds: 2),
           ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.cloud_upload_rounded, size: 16),
-            label: const Text('Unggah'),
-            onPressed: () async {
-              final fName = fileNameCtrl.text.trim();
-              final text = contentCtrl.text;
-              if (fName.isEmpty) return;
-              Navigator.pop(ctx);
+        );
+      }
 
-              setState(() => _isUploadingAttachment = true);
-              try {
-                final bytes = utf8.encode(text);
-                final newAtt = await widget.kanbanRepo.uploadAttachmentBytes(
-                  widget.taskId,
-                  bytes,
-                  fName,
-                );
+      TaskAttachmentModel newAtt;
+      if (bytes != null && bytes.isNotEmpty) {
+        newAtt = await widget.kanbanRepo.uploadAttachmentBytes(
+          widget.taskId,
+          bytes,
+          fName,
+        );
+      } else if (path != null && path.isNotEmpty) {
+        newAtt = await widget.kanbanRepo.uploadAttachment(
+          widget.taskId,
+          path,
+          fName,
+        );
+      } else {
+        throw Exception('Data berkas tidak dapat diakses.');
+      }
 
-                if (!mounted) return;
-                setState(() {
-                  if (_task != null) {
-                    final updated =
-                        List<TaskAttachmentModel>.from(_task!.attachments)
-                          ..insert(0, newAtt);
-                    _task = _task!.copyWith(attachments: updated);
-                  }
-                  _isUploadingAttachment = false;
-                });
-                widget.onTaskUpdated?.call();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Berkas berhasil diunggah')),
-                );
-              } catch (e) {
-                if (mounted) {
-                  setState(() => _isUploadingAttachment = false);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Gagal mengunggah berkas: $e')),
-                  );
-                }
-              }
-            },
+      if (!mounted) return;
+      setState(() {
+        if (_task != null) {
+          final updated = List<TaskAttachmentModel>.from(_task!.attachments)
+            ..insert(0, newAtt);
+          _task = _task!.copyWith(attachments: updated);
+        }
+        _isUploadingAttachment = false;
+      });
+      widget.onTaskUpdated?.call();
+
+      try {
+        await widget.kanbanRepo.addComment(
+          widget.taskId,
+          '📎 Mengunggah lampiran berkas: $fName',
+        );
+        final fresh = await widget.kanbanRepo.getTaskDetail(widget.taskId);
+        if (mounted) setState(() => _task = fresh);
+      } catch (_) {}
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Berkas $fName berhasil diunggah!'),
+            backgroundColor: const Color(0xFF00AAAD),
           ),
-        ],
-      ),
-    );
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingAttachment = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengunggah berkas: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // --- ASSIGNEES SELECTION DIALOG ---
@@ -1477,7 +1476,8 @@ class _TaskDetailModalState extends State<TaskDetailModal>
                     // Chronological order from top (older) to bottom (newest)
                     final c = comments[comments.length - 1 - idx];
                     final isMyComment = widget.currentUser != null &&
-                        c.userId == widget.currentUser!.id;
+                        (c.userId == widget.currentUser!.id ||
+                         c.userName.toLowerCase() == widget.currentUser!.name.toLowerCase());
                     final isMedia = _isMediaUrl(c.content);
                     final timeStr = _formatChatTime(c.createdAt);
 

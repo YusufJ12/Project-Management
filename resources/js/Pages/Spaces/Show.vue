@@ -1127,10 +1127,19 @@ const selectedGifCategory = ref('all');
 
 const isMyComment = (com) => {
     if (!com) return false;
-    const myId = currentUser.value?.id || page.props.auth?.user?.id;
-    if (!myId) return false;
+    const authUser = currentUser.value || page.props.auth?.user;
+    if (!authUser) return false;
     const commentUserId = com.user_id ?? com.user?.id;
-    return String(commentUserId) === String(myId);
+    if (commentUserId && String(commentUserId) === String(authUser.id)) {
+        return true;
+    }
+    if (com.user?.email && authUser.email && com.user.email.toLowerCase() === authUser.email.toLowerCase()) {
+        return true;
+    }
+    if (com.user?.name && authUser.name && com.user.name.trim().toLowerCase() === authUser.name.trim().toLowerCase()) {
+        return true;
+    }
+    return false;
 };
 
 const addEmojiToComment = (emoji) => {
@@ -1207,6 +1216,118 @@ const formatChatTime = (rawDate) => {
         return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch {
         return rawDate;
+    }
+};
+
+const isAuditTrailExpanded = ref(false);
+const auditLogFilter = ref('all');
+
+const filteredActivityLogs = computed(() => {
+    if (!taskActivityLogs.value) return [];
+    if (auditLogFilter.value === 'all') return taskActivityLogs.value;
+    return taskActivityLogs.value.filter((act) => {
+        if (auditLogFilter.value === 'status') return act.action === 'task_moved';
+        if (auditLogFilter.value === 'files') return act.action === 'attachment_uploaded';
+        if (auditLogFilter.value === 'checklists') return act.action?.includes('checklist');
+        if (auditLogFilter.value === 'comments') return act.action === 'comment_added';
+        return true;
+    });
+});
+
+const getActionIcon = (action) => {
+    switch (action) {
+        case 'comment_added': return 'ri-chat-1-fill text-success';
+        case 'task_moved': return 'ri-route-fill text-primary';
+        case 'task_assigned': return 'ri-user-shared-fill text-indigo';
+        case 'attachment_uploaded': return 'ri-attachment-2 text-warning';
+        case 'checklist_completed': return 'ri-checkbox-circle-fill text-success';
+        case 'checklist_uncompleted': return 'ri-checkbox-blank-circle-line text-secondary';
+        case 'timeline_adjusted':
+        case 'timeline_cascaded': return 'ri-calendar-event-fill text-info';
+        default: return 'ri-flashlight-fill text-primary';
+    }
+};
+
+const formatActionText = (act) => {
+    switch (act.action) {
+        case 'comment_added': return 'menulis komentar';
+        case 'task_moved': return 'memindahkan status tugas';
+        case 'task_assigned': return 'menugaskan anggota';
+        case 'task_updated': return 'memperbarui rincian tugas';
+        case 'attachment_uploaded': return 'mengunggah berkas lampiran';
+        case 'checklist_completed': return 'menyelesaikan checklist';
+        case 'checklist_uncompleted': return 'membuka kembali checklist';
+        case 'timeline_adjusted': return 'menyesuaikan jadwal tugas';
+        case 'timeline_cascaded': return 'menggeser jadwal tugas otomatis';
+        case 'dependency_added': return 'menautkan dependensi tugas';
+        case 'dependency_removed': return 'mencopot dependensi tugas';
+        default: return `melakukan aksi ${act.action}`;
+    }
+};
+
+const chatFileInputRef = ref(null);
+
+const handleChatFileUpload = async (event) => {
+    if (isViewer.value) return;
+    const file = event.target.files?.[0];
+    if (!file || !selectedTask.value) return;
+
+    isUploadingAttachment.value = true;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const res = await fetch(`/tasks/${selectedTask.value.id}/attachments`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': getCsrfToken(),
+                Accept: 'application/json',
+            },
+            body: formData,
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            if (!selectedTask.value.attachments) {
+                selectedTask.value.attachments = [];
+            }
+            if (data.attachment) {
+                const attId = String(data.attachment.id);
+                const exists = selectedTask.value.attachments.some((a) => String(a.id) === attId);
+                if (!exists) {
+                    selectedTask.value.attachments.unshift(data.attachment);
+                }
+
+                const isImg = file.type.startsWith('image/');
+                const attMsg = isImg && data.attachment.url
+                    ? `📎 Mengunggah gambar: ${data.attachment.original_name}\n${data.attachment.url}`
+                    : `📎 Mengunggah lampiran berkas dari komputer: ${data.attachment.original_name}`;
+
+                try {
+                    await fetch(`/tasks/${selectedTask.value.id}/comments`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': getCsrfToken(),
+                            Accept: 'application/json',
+                        },
+                        body: JSON.stringify({ content: attMsg }),
+                    });
+                    await fetchComments();
+                } catch {
+                    // Ignore comment failure
+                }
+            }
+            if (chatFileInputRef.value) chatFileInputRef.value.value = '';
+            showToast(`Berkas "${file.name}" berhasil diunggah dari penyimpanan!`, 'success');
+        } else {
+            showToast('Gagal mengunggah berkas. Pastikan ukuran di bawah 25MB.', 'error');
+        }
+    } catch (err) {
+        console.error('Error uploading chat attachment', err);
+        showToast('Koneksi terputus saat mengunggah berkas.', 'error');
+    } finally {
+        isUploadingAttachment.value = false;
     }
 };
 
@@ -3204,16 +3325,18 @@ const filteredTasks = computed(() => {
                                             <button
                                                 v-if="!isViewer"
                                                 type="button"
-                                                class="btn btn-sm btn-light border rounded-pill px-3 fs-12 fw-semibold"
+                                                class="btn btn-sm btn-outline-primary rounded-pill px-3 fs-12 fw-semibold shadow-2xs"
                                                 :disabled="isUploadingAttachment"
+                                                title="Pilih berkas dari penyimpanan komputer (PDF, Gambar, Dokumen, ZIP maks 25MB)"
                                                 @click="triggerFileInput"
                                             >
-                                                <i class="ri-upload-2-line me-1"></i> Unggah Berkas
+                                                <i class="ri-folder-open-line me-1"></i> {{ isUploadingAttachment ? 'Mengunggah...' : 'Pilih Berkas Komputer' }}
                                             </button>
                                             <input
                                                 ref="fileInputRef"
                                                 type="file"
                                                 class="d-none"
+                                                accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
                                                 @change="handleFileUpload"
                                             />
                                         </div>
@@ -3527,6 +3650,13 @@ const filteredTasks = computed(() => {
 
                                         <!-- Message Input Field -->
                                         <div class="position-relative">
+                                            <input
+                                                ref="chatFileInputRef"
+                                                type="file"
+                                                class="d-none"
+                                                multiple
+                                                @change="handleChatFileUpload"
+                                            />
                                             <textarea
                                                 v-model="newCommentContent"
                                                 class="form-control fs-13 rounded-3"
@@ -3535,11 +3665,23 @@ const filteredTasks = computed(() => {
                                                 :disabled="isSubmittingComment"
                                                 @keydown.enter.exact.prevent="addComment"
                                             ></textarea>
-                                            <div class="d-flex justify-content-between align-items-center mt-2">
-                                                <span class="fs-11 text-muted">Tekan <kbd>Enter</kbd> untuk kirim</span>
+                                            <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-xs btn-outline-secondary rounded-pill px-3 py-1-5 fs-12 d-inline-flex align-items-center gap-1 shadow-2xs"
+                                                        :disabled="isUploadingAttachment || isViewer"
+                                                        title="Pilih berkas dari penyimpanan komputer Anda"
+                                                        @click="chatFileInputRef?.click()"
+                                                    >
+                                                        <i class="ri-attachment-2 fs-13"></i>
+                                                        <span>{{ isUploadingAttachment ? 'Mengunggah...' : 'Lampirkan Berkas' }}</span>
+                                                    </button>
+                                                    <span class="fs-11 text-muted d-none d-sm-inline">Tekan <kbd>Enter</kbd> untuk kirim</span>
+                                                </div>
                                                 <button
                                                     type="button"
-                                                    class="btn btn-sm btn-primary rounded-pill px-4 fw-semibold fs-13"
+                                                    class="btn btn-sm btn-primary rounded-pill px-4 fw-semibold fs-13 shadow-sm"
                                                     :disabled="!newCommentContent.trim() || isSubmittingComment"
                                                     @click="addComment"
                                                 >
@@ -3549,47 +3691,133 @@ const filteredTasks = computed(() => {
                                         </div>
                                     </div>
 
-                                    <!-- Activity Log Audit Trail -->
+                                    <!-- Activity Log Audit Trail (Collapsible & Compact) -->
                                     <div class="mt-4 pt-3 border-top">
-                                        <h6 class="fw-bold fs-14 mb-3 d-flex align-items-center gap-2">
-                                            <i class="ri-history-line text-primary"></i>
-                                            <span>Riwayat Aktivitas (Audit Trail)</span>
-                                        </h6>
-                                        <div v-if="taskActivityLogs.length" class="timeline d-flex flex-column gap-2">
-                                            <div
-                                                v-for="act in taskActivityLogs"
-                                                :key="act.id"
-                                                class="d-flex align-items-start gap-2 fs-12 text-muted p-2 rounded-2 bg-light-subtle"
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <h6 class="fw-bold fs-14 mb-0 d-flex align-items-center gap-2 text-dark">
+                                                    <i class="ri-history-line text-primary fs-16"></i>
+                                                    <span>Riwayat Aktivitas (Audit Trail)</span>
+                                                </h6>
+                                                <span class="badge bg-secondary-subtle text-secondary rounded-pill fs-11 px-2">
+                                                    {{ taskActivityLogs.length }}
+                                                </span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="btn btn-xs btn-outline-primary rounded-pill px-2-5 py-1 fs-11 fw-semibold d-inline-flex align-items-center gap-1"
+                                                @click="isAuditTrailExpanded = !isAuditTrailExpanded"
                                             >
-                                                <i class="ri-checkbox-circle-fill text-success fs-14 mt-1"></i>
-                                                <div class="flex-grow-1">
-                                                    <span class="fw-semibold text-body">{{ act.actor?.name || 'Seseorang' }}</span>
-                                                    <span class="ms-1">melakukan aksi <code>{{ act.action }}</code></span>
-                                                    <div v-if="act.metadata" class="fs-11 text-muted mt-0">
-                                                        <span v-if="act.action === 'timeline_adjusted' && act.metadata.dates_summary">
-                                                            <i class="ri-calendar-event-line text-info me-1"></i>Timeline diubah: <strong>{{ act.metadata.dates_summary }}</strong>
-                                                        </span>
-                                                        <span v-else-if="act.action === 'timeline_cascaded'">
-                                                            <i class="ri-git-merge-line text-primary me-1"></i>Timeline bergeser otomatis mengikuti prasyarat <strong>{{ act.metadata.prerequisite_title }}</strong>
-                                                            <span v-if="act.metadata.dates_summary"> ({{ act.metadata.dates_summary }})</span>
-                                                        </span>
-                                                        <span v-else-if="act.action === 'dependency_added' && act.metadata.prerequisite_title">
-                                                            <i class="ri-links-line text-indigo me-1"></i>Menautkan dependensi pada tugas: <strong>{{ act.metadata.prerequisite_title }}</strong>
-                                                        </span>
-                                                        <span v-else-if="act.action === 'dependency_removed'">
-                                                            <i class="ri-link-unlink-m text-secondary me-1"></i>Menghapus dependensi tugas
-                                                        </span>
-                                                        <span v-else-if="act.metadata.new_stage">Pindah ke: <strong>{{ act.metadata.new_stage }}</strong></span>
-                                                        <span v-else-if="act.metadata.new_priority">Prioritas diubah ke: <strong>{{ act.metadata.new_priority }}</strong></span>
-                                                        <span v-else-if="act.metadata.checklist_title">Checklist: {{ act.metadata.checklist_title }}</span>
-                                                        <span v-else-if="act.metadata.file_name">Berkas: {{ act.metadata.file_name }}</span>
+                                                <i :class="isAuditTrailExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'"></i>
+                                                <span>{{ isAuditTrailExpanded ? 'Sembunyikan Log' : 'Buka Riwayat' }}</span>
+                                            </button>
+                                        </div>
+
+                                        <!-- Collapsed State: Sleek Single-Line Preview -->
+                                        <div v-if="!isAuditTrailExpanded" class="p-2-5 rounded-3 bg-light-subtle border d-flex align-items-center justify-content-between cursor-pointer hover-bg-light" @click="isAuditTrailExpanded = true">
+                                            <div class="d-flex align-items-center gap-2 text-truncate me-2">
+                                                <span class="badge bg-primary-subtle text-primary fs-10 rounded-pill px-2 py-0-5">Terbaru</span>
+                                                <span v-if="taskActivityLogs.length" class="fs-12 text-body text-truncate">
+                                                    <strong>{{ taskActivityLogs[0].actor?.name || 'Seseorang' }}</strong>
+                                                    {{ formatActionText(taskActivityLogs[0]) }}
+                                                </span>
+                                                <span v-else class="fs-12 text-muted">Belum ada riwayat aktivitas tercatat</span>
+                                            </div>
+                                            <span v-if="taskActivityLogs.length" class="fs-11 text-muted text-nowrap flex-shrink-0">
+                                                {{ formatDateTime(taskActivityLogs[0].created_at) }}
+                                            </span>
+                                        </div>
+
+                                        <!-- Expanded State: Category Filter Pills + Capped Scroll Container -->
+                                        <div v-else class="rounded-4 border bg-body p-3 shadow-2xs">
+                                            <!-- Category Filter Pills -->
+                                            <div class="d-flex align-items-center gap-1 overflow-x-auto pb-2 mb-2 border-bottom">
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-xs rounded-pill px-2-5 py-1 fs-11 flex-shrink-0"
+                                                    :class="auditLogFilter === 'all' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                    @click="auditLogFilter = 'all'"
+                                                >
+                                                    Semua ({{ taskActivityLogs.length }})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-xs rounded-pill px-2-5 py-1 fs-11 flex-shrink-0"
+                                                    :class="auditLogFilter === 'status' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                    @click="auditLogFilter = 'status'"
+                                                >
+                                                    🚀 Status
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-xs rounded-pill px-2-5 py-1 fs-11 flex-shrink-0"
+                                                    :class="auditLogFilter === 'files' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                    @click="auditLogFilter = 'files'"
+                                                >
+                                                    📎 Berkas
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-xs rounded-pill px-2-5 py-1 fs-11 flex-shrink-0"
+                                                    :class="auditLogFilter === 'checklists' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                    @click="auditLogFilter = 'checklists'"
+                                                >
+                                                    ✅ Checklist
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-xs rounded-pill px-2-5 py-1 fs-11 flex-shrink-0"
+                                                    :class="auditLogFilter === 'comments' ? 'btn-dark' : 'btn-light border text-muted'"
+                                                    @click="auditLogFilter = 'comments'"
+                                                >
+                                                    💬 Komentar
+                                                </button>
+                                            </div>
+
+                                            <!-- Capped Scrollable Container (max 240px, never causes infinite scroll) -->
+                                            <div v-if="filteredActivityLogs.length" class="d-flex flex-column gap-2 overflow-y-auto pe-1" style="max-height: 240px;">
+                                                <div
+                                                    v-for="act in filteredActivityLogs"
+                                                    :key="act.id"
+                                                    class="d-flex align-items-start gap-2 fs-12 text-muted p-2 rounded-3 bg-light-subtle border border-light-subtle"
+                                                >
+                                                    <div class="mt-0-5 flex-shrink-0">
+                                                        <i :class="getActionIcon(act.action)" class="fs-14"></i>
+                                                    </div>
+                                                    <div class="flex-grow-1 overflow-hidden">
+                                                        <div class="d-flex align-items-center justify-content-between gap-2">
+                                                            <span class="fw-semibold text-body text-truncate">{{ act.actor?.name || 'Seseorang' }}</span>
+                                                            <span class="fs-10 text-muted text-nowrap flex-shrink-0">{{ formatDateTime(act.created_at) }}</span>
+                                                        </div>
+                                                        <div class="fs-11 text-secondary mt-0-5">
+                                                            {{ formatActionText(act) }}
+                                                        </div>
+                                                        <div v-if="act.metadata" class="fs-11 text-muted mt-1 bg-white p-1-5 rounded-2 border">
+                                                            <span v-if="act.action === 'timeline_adjusted' && act.metadata.dates_summary">
+                                                                <i class="ri-calendar-event-line text-info me-1"></i>Timeline: <strong>{{ act.metadata.dates_summary }}</strong>
+                                                            </span>
+                                                            <span v-else-if="act.action === 'timeline_cascaded'">
+                                                                <i class="ri-git-merge-line text-primary me-1"></i>Mengikuti prasyarat <strong>{{ act.metadata.prerequisite_title }}</strong>
+                                                                <span v-if="act.metadata.dates_summary"> ({{ act.metadata.dates_summary }})</span>
+                                                            </span>
+                                                            <span v-else-if="act.action === 'dependency_added' && act.metadata.prerequisite_title">
+                                                                <i class="ri-links-line text-indigo me-1"></i>Dependensi: <strong>{{ act.metadata.prerequisite_title }}</strong>
+                                                            </span>
+                                                            <span v-else-if="act.action === 'dependency_removed'">
+                                                                <i class="ri-link-unlink-m text-secondary me-1"></i>Menghapus dependensi tugas
+                                                            </span>
+                                                            <span v-else-if="act.metadata.new_stage">Pindah ke: <strong>{{ act.metadata.new_stage }}</strong></span>
+                                                            <span v-else-if="act.metadata.new_priority">Prioritas: <strong>{{ act.metadata.new_priority }}</strong></span>
+                                                            <span v-else-if="act.metadata.checklist_title">Item: {{ act.metadata.checklist_title }}</span>
+                                                            <span v-else-if="act.metadata.file_name">Berkas: {{ act.metadata.file_name }}</span>
+                                                            <span v-else-if="act.metadata.comment_snippet">"{{ act.metadata.comment_snippet }}"</span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <span class="fs-10 text-muted">{{ formatDateTime(act.created_at) }}</span>
                                             </div>
-                                        </div>
-                                        <div v-else class="text-muted fs-11">
-                                            Tidak ada riwayat aktivitas yang tercatat.
+                                            <div v-else class="text-muted fs-11 text-center py-3">
+                                                Tidak ada riwayat aktivitas dalam kategori ini.
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

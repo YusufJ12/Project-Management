@@ -380,6 +380,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> with WidgetsBindingOb
   // Activity Logs
   List<dynamic> _activityLogs = [];
   bool _isLogsLoading = false;
+  String _activityLogFilter = 'all';
 
   // Timeline
   List<dynamic> _timelineTasks = [];
@@ -2617,63 +2618,149 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> with WidgetsBindingOb
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadActivityLogs,
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        itemCount: _activityLogs.length,
-        itemBuilder: (ctx, idx) {
-          final log = _activityLogs[idx];
-          return Card(
-            elevation: 0.5,
-            margin: const EdgeInsets.only(bottom: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(color: Colors.grey.withAlpha(30)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00AAAD).withAlpha(20),
-                      borderRadius: BorderRadius.circular(10),
+    final filteredLogs = _activityLogs.where((log) {
+      if (_activityLogFilter == 'all') return true;
+      final action = (log['action'] as String? ?? '').toLowerCase();
+      if (_activityLogFilter == 'task') {
+        return action.contains('task') || action.contains('timeline') || action.contains('dependency');
+      }
+      if (_activityLogFilter == 'comments') {
+        return action.contains('comment');
+      }
+      if (_activityLogFilter == 'files') {
+        return action.contains('attachment') || action.contains('file');
+      }
+      if (_activityLogFilter == 'checklists') {
+        return action.contains('checklist');
+      }
+      return true;
+    }).toList();
+
+    return Column(
+      children: [
+        // Category Filter Chips
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              _buildLogFilterChip('all', 'Semua (${_activityLogs.length})'),
+              const SizedBox(width: 6),
+              _buildLogFilterChip('task', '🚀 Tugas'),
+              const SizedBox(width: 6),
+              _buildLogFilterChip('comments', '💬 Komentar'),
+              const SizedBox(width: 6),
+              _buildLogFilterChip('files', '📎 Berkas'),
+              const SizedBox(width: 6),
+              _buildLogFilterChip('checklists', '✅ Checklist'),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Filtered List
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadActivityLogs,
+            child: filteredLogs.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Tidak ada aktivitas dalam kategori ini',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
                     ),
-                    child: const Icon(Icons.bolt_rounded, size: 18, color: Color(0xFF00AAAD)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          log['description'] as String? ?? 'Aktivitas sistem',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    itemCount: filteredLogs.length,
+                    itemBuilder: (ctx, idx) {
+                      final log = filteredLogs[idx];
+                      final action = (log['action'] as String? ?? '').toLowerCase();
+
+                      IconData iconData = Icons.bolt_rounded;
+                      Color iconColor = const Color(0xFF00AAAD);
+                      if (action.contains('comment')) {
+                        iconData = Icons.chat_bubble_rounded;
+                        iconColor = const Color(0xFF10B981);
+                      } else if (action.contains('attachment') || action.contains('file')) {
+                        iconData = Icons.attach_file_rounded;
+                        iconColor = const Color(0xFFF59E0B);
+                      } else if (action.contains('checklist')) {
+                        iconData = Icons.check_circle_rounded;
+                        iconColor = const Color(0xFF06B6D4);
+                      } else if (action.contains('moved')) {
+                        iconData = Icons.swap_horiz_rounded;
+                        iconColor = const Color(0xFF6366F1);
+                      }
+
+                      return Card(
+                        elevation: 0.5,
+                        margin: const EdgeInsets.only(bottom: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: BorderSide(color: Colors.grey.withAlpha(30)),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(Icons.access_time_rounded, size: 11, color: Colors.grey.shade500),
-                            const SizedBox(width: 4),
-                            Text(
-                              log['created_at'] as String? ?? '',
-                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                            ),
-                          ],
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: iconColor.withAlpha(20),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(iconData, size: 18, color: iconColor),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      log['description'] as String? ?? 'Aktivitas sistem',
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.access_time_rounded, size: 11, color: Colors.grey.shade500),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          log['created_at'] as String? ?? '',
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                ],
-              ),
-            ),
-          );
-        },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLogFilterChip(String filterKey, String label) {
+    final isSelected = _activityLogFilter == filterKey;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => setState(() => _activityLogFilter = filterKey),
+      selectedColor: const Color(0xFF00AAAD),
+      labelStyle: TextStyle(
+        fontSize: 11,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        color: isSelected ? Colors.white : null,
       ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      showCheckmark: false,
     );
   }
 }
