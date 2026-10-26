@@ -105,6 +105,55 @@ watch(
 // Floating Toast Notifications (Teams/Slack-style in-app popup)
 const floatingToasts = ref([]);
 
+const desktopNotificationPermission = ref(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'denied'
+);
+
+const requestDesktopNotificationPermission = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    try {
+        const perm = await Notification.requestPermission();
+        desktopNotificationPermission.value = perm;
+        if (perm === 'granted') {
+            new Notification('Notifikasi Windows Diaktifkan! 🔔', {
+                body: 'Pemberitahuan chat dan tugas dari NexSphere akan muncul langsung di Windows Anda.',
+                icon: '/favicon.ico',
+            });
+        }
+    } catch (e) {
+        console.warn('Gagal meminta izin notifikasi desktop:', e);
+    }
+};
+
+const showDesktopNotification = (toast) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+        try {
+            const notif = new Notification(toast.title || 'NexSphere Project Management', {
+                body: toast.message || 'Pemberitahuan aktivitas baru',
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                tag: String(toast.id || Date.now()),
+            });
+            if (toast.url) {
+                notif.onclick = () => {
+                    window.focus();
+                    window.location.href = toast.url;
+                };
+            }
+        } catch (e) {
+            console.warn('[Desktop Notification] Gagal menampilkan notifikasi:', e);
+        }
+    } else if (Notification.permission === 'default') {
+        Notification.requestPermission().then((perm) => {
+            desktopNotificationPermission.value = perm;
+            if (perm === 'granted') {
+                showDesktopNotification(toast);
+            }
+        });
+    }
+};
+
 const pushFloatingToast = (toast) => {
     const id = toast.id || ('toast_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
     const newToast = {
@@ -119,6 +168,7 @@ const pushFloatingToast = (toast) => {
     };
 
     floatingToasts.value.unshift(newToast);
+    showDesktopNotification(newToast);
 
     // Auto-dismiss after 6.5s
     setTimeout(() => {
@@ -522,6 +572,14 @@ onUnmounted(() => {
                                         @click="markAllNotificationsRead"
                                     >
                                         Tandai Semua Dibaca
+                                    </button>
+                                </div>
+                                <div v-if="desktopNotificationPermission !== 'granted'" class="px-3 py-2 bg-primary-subtle border-bottom d-flex align-items-center justify-content-between">
+                                    <span class="fs-11 text-primary fw-medium">
+                                        <i class="ri-notification-badge-line me-1"></i> Notif Desktop Windows
+                                    </span>
+                                    <button type="button" class="btn btn-xs btn-primary rounded-pill px-2 py-0 fs-10" @click="requestDesktopNotificationPermission">
+                                        Aktifkan
                                     </button>
                                 </div>
                                 <div class="overflow-auto" style="max-height: 280px;">

@@ -52,6 +52,7 @@ class TaskCommentAddedEvent implements ShouldBroadcastNow
                 'taskId' => $this->taskId,
                 'comment' => [
                     'id' => $this->comment['id'] ?? null,
+                    'user_id' => $this->comment['user_id'] ?? ($user['id'] ?? null),
                     'content' => $this->comment['content'] ?? null,
                     'created_at' => $this->comment['created_at'] ?? null,
                     'user' => [
@@ -71,6 +72,7 @@ class TaskCommentAddedEvent implements ShouldBroadcastNow
             'taskId' => $this->taskId,
             'comment' => [
                 'id' => $this->comment->id,
+                'user_id' => $this->comment->user_id ?? $user?->id,
                 'content' => $this->comment->content,
                 'created_at' => $this->comment->created_at?->toISOString(),
                 'user' => [

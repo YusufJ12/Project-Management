@@ -1121,6 +1121,15 @@ const deleteComment = async (com) => {
 };
 
 const quickEmojis = ['👍', '❤️', '🔥', '🚀', '😄', '🎉', '👀', '👏', '✅', '💯', '🙏'];
+const isGifDropdownOpen = ref(false);
+
+const isMyComment = (com) => {
+    if (!com) return false;
+    const myId = currentUser.value?.id || page.props.auth?.user?.id;
+    if (!myId) return false;
+    const commentUserId = com.user_id ?? com.user?.id;
+    return String(commentUserId) === String(myId);
+};
 
 const addEmojiToComment = (emoji) => {
     newCommentContent.value = (newCommentContent.value ? newCommentContent.value + ' ' : '') + emoji;
@@ -1138,6 +1147,7 @@ const popularGifs = [
 ];
 
 const selectGif = (url) => {
+    isGifDropdownOpen.value = false;
     newCommentContent.value = url;
     addComment();
 };
@@ -3278,10 +3288,10 @@ const filteredTasks = computed(() => {
                                                 v-for="com in [...selectedTask.comments].reverse()"
                                                 :key="com.id"
                                                 class="d-flex w-100"
-                                                :class="com.user_id === currentUser?.id ? 'justify-content-end' : 'justify-content-start'"
+                                                :class="isMyComment(com) ? 'justify-content-end' : 'justify-content-start'"
                                             >
                                                 <!-- Incoming User Avatar -->
-                                                <div v-if="com.user_id !== currentUser?.id" class="me-2 flex-shrink-0 mt-1">
+                                                <div v-if="!isMyComment(com)" class="me-2 flex-shrink-0 mt-1">
                                                     <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold fs-11 shadow-2xs" style="width: 28px; height: 28px;">
                                                         {{ com.user?.name?.charAt(0).toUpperCase() || 'U' }}
                                                     </div>
@@ -3292,18 +3302,18 @@ const filteredTasks = computed(() => {
                                                     class="px-3 py-2 position-relative shadow-2xs"
                                                     :style="{
                                                         maxWidth: '78%',
-                                                        borderRadius: com.user_id === currentUser?.id ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                                                        backgroundColor: com.user_id === currentUser?.id ? 'rgba(0, 170, 173, 0.14)' : 'var(--bs-card-bg, #ffffff)',
-                                                        border: com.user_id === currentUser?.id ? '1px solid rgba(0, 170, 173, 0.3)' : '1px solid rgba(0, 0, 0, 0.08)'
+                                                        borderRadius: isMyComment(com) ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                                                        backgroundColor: isMyComment(com) ? 'rgba(0, 170, 173, 0.14)' : 'var(--bs-card-bg, #ffffff)',
+                                                        border: isMyComment(com) ? '1px solid rgba(0, 170, 173, 0.3)' : '1px solid rgba(0, 0, 0, 0.08)'
                                                     }"
                                                 >
                                                     <!-- Sender Name & Delete Button -->
                                                     <div class="d-flex justify-content-between align-items-center mb-1">
-                                                        <span class="fw-bold fs-11" :class="com.user_id === currentUser?.id ? 'text-primary' : 'text-body-secondary'">
-                                                            {{ com.user_id === currentUser?.id ? 'Anda' : (com.user?.name || 'Rekan Tim') }}
+                                                        <span class="fw-bold fs-11" :class="isMyComment(com) ? 'text-primary' : 'text-body-secondary'">
+                                                            {{ isMyComment(com) ? 'Anda' : (com.user?.name || 'Rekan Tim') }}
                                                         </span>
                                                         <button
-                                                            v-if="com.user_id === currentUser?.id || currentUser?.is_super_admin"
+                                                            v-if="isMyComment(com) || currentUser?.is_super_admin"
                                                             type="button"
                                                             class="btn btn-sm btn-link text-danger p-0 border-0 ms-2 opacity-75 hover-opacity-100"
                                                             title="Hapus komentar"
@@ -3325,7 +3335,7 @@ const filteredTasks = computed(() => {
                                                     <!-- Timestamp & Read Status -->
                                                     <div class="d-flex align-items-center justify-content-end gap-1 mt-1">
                                                         <span class="fs-10 text-muted">{{ formatChatTime(com.created_at) }}</span>
-                                                        <i v-if="com.user_id === currentUser?.id" class="ri-check-double-line text-primary fs-12 ms-1"></i>
+                                                        <i v-if="isMyComment(com)" class="ri-check-double-line text-primary fs-12 ms-1"></i>
                                                     </div>
                                                 </div>
                                             </div>
@@ -3348,15 +3358,33 @@ const filteredTasks = computed(() => {
                                             >
                                                 {{ em }}
                                             </button>
-                                            <div class="dropdown ms-auto flex-shrink-0">
-                                                <button class="btn btn-xs btn-outline-primary dropdown-toggle rounded-pill px-2 py-1 fs-11 fw-semibold" type="button" data-bs-toggle="dropdown">
+                                            <div class="position-relative ms-auto flex-shrink-0">
+                                                <button
+                                                    class="btn btn-xs btn-outline-primary rounded-pill px-2 py-1 fs-11 fw-semibold"
+                                                    type="button"
+                                                    @click="isGifDropdownOpen = !isGifDropdownOpen"
+                                                >
                                                     <i class="ri-file-gif-line me-1"></i> GIF Bebas Beban Server
                                                 </button>
-                                                <div class="dropdown-menu dropdown-menu-end p-2 shadow" style="width: 270px;">
-                                                    <div class="dropdown-header fs-11 text-uppercase fw-bold p-1">Pilih GIF Cepat (CDN)</div>
-                                                    <div class="row g-1">
+                                                <div
+                                                    v-if="isGifDropdownOpen"
+                                                    class="position-absolute end-0 bottom-100 mb-2 p-2 bg-white rounded-3 shadow-lg border"
+                                                    style="width: 280px; z-index: 1060;"
+                                                >
+                                                    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                                                        <span class="fs-11 text-uppercase fw-bold text-muted">Pilih GIF Cepat (CDN)</span>
+                                                        <button type="button" class="btn btn-sm btn-link text-muted p-0 border-0" @click="isGifDropdownOpen = false">
+                                                            <i class="ri-close-line fs-14"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="row g-1" style="max-height: 220px; overflow-y: auto;">
                                                         <div v-for="g in popularGifs" :key="g.url" class="col-6">
-                                                            <div class="ratio ratio-16x9 rounded overflow-hidden border cursor-pointer hover-shadow" @click="selectGif(g.url)" :title="g.title">
+                                                            <div
+                                                                class="ratio ratio-16x9 rounded overflow-hidden border cursor-pointer hover-shadow"
+                                                                style="cursor: pointer;"
+                                                                @click="selectGif(g.url)"
+                                                                :title="g.title"
+                                                            >
                                                                 <img :src="g.url" class="object-fit-cover w-100 h-100" />
                                                             </div>
                                                             <span class="fs-10 text-truncate d-block mt-1 text-center text-muted">{{ g.title }}</span>

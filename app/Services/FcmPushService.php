@@ -143,6 +143,16 @@ class FcmPushService
                         'title' => $title,
                         'body' => $body,
                     ],
+                    'android' => [
+                        'priority' => 'HIGH',
+                        'notification' => [
+                            'channel_id' => 'high_importance_channel',
+                            'sound' => 'default',
+                            'default_vibrate_timings' => true,
+                            'default_light_settings' => true,
+                            'notification_priority' => 'PRIORITY_HIGH',
+                        ],
+                    ],
                 ];
 
                 if (! empty($stringData)) {
@@ -232,15 +242,41 @@ class FcmPushService
      */
     protected static function getServiceAccountCredentials(): ?array
     {
-        $customPath = config('services.fcm.credentials_path') ?: env('FIREBASE_CREDENTIALS');
-        $defaultPath = storage_path('app/firebase/service-account.json');
-
-        $path = $customPath && file_exists($customPath) ? $customPath : ($defaultPath && file_exists($defaultPath) ? $defaultPath : null);
-
-        if ($path && file_exists($path)) {
-            $json = json_decode(file_get_contents($path), true);
+        // 1. Direct JSON string from environment
+        $envJson = env('FIREBASE_SERVICE_ACCOUNT_JSON');
+        if (! empty($envJson)) {
+            $json = json_decode($envJson, true);
             if (is_array($json) && ! empty($json['private_key']) && ! empty($json['client_email'])) {
                 return $json;
+            }
+        }
+
+        // 2. Base64 encoded JSON string from environment
+        $envBase64 = env('FIREBASE_SERVICE_ACCOUNT_BASE64');
+        if (! empty($envBase64)) {
+            $decoded = base64_decode($envBase64);
+            if ($decoded) {
+                $json = json_decode($decoded, true);
+                if (is_array($json) && ! empty($json['private_key']) && ! empty($json['client_email'])) {
+                    return $json;
+                }
+            }
+        }
+
+        // 3. File paths
+        $candidates = [
+            config('services.fcm.credentials_path'),
+            env('FIREBASE_CREDENTIALS'),
+            storage_path('app/firebase/service-account.json'),
+            base_path('config/firebase-service-account.json'),
+        ];
+
+        foreach ($candidates as $path) {
+            if ($path && file_exists($path)) {
+                $json = json_decode(file_get_contents($path), true);
+                if (is_array($json) && ! empty($json['private_key']) && ! empty($json['client_email'])) {
+                    return $json;
+                }
             }
         }
 
